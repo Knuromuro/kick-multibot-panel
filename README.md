@@ -1,6 +1,7 @@
 # Kick Multibot Panel
 
 This project provides a simple dashboard and backend for managing multiple Kick.com chat bots.
+It is designed to support up to **1000** configured bots on a single instance.
 
 ## Backend
 

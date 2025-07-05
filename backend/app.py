@@ -6,6 +6,7 @@ from threading import Thread
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.executors.pool import ThreadPoolExecutor
 import websockets
 
 app = Flask(__name__)
@@ -26,7 +27,10 @@ class Log(db.Model):
     message = db.Column(db.String(200))
     channel = db.Column(db.String(80))
 
-scheduler = BackgroundScheduler()
+scheduler = BackgroundScheduler(
+    executors={'default': ThreadPoolExecutor(max_workers=50)},
+    job_defaults={'max_instances': 20}
+)
 scheduler.start()
 
 async def send_kick_message(channel: str, message: str):
@@ -56,6 +60,11 @@ thread.daemon = True
 thread.start()
 
 # Initialize database
+def initialize_jobs():
+    """Schedule all bots from the database on startup."""
+    for bot in Bot.query.all():
+        schedule_bot(bot)
+
 with app.app_context():
     db.create_all()
 
@@ -113,6 +122,10 @@ def schedule_bot(bot: Bot):
         scheduler.add_job(lambda: asyncio.run_coroutine_threadsafe(
             schedule_job(bot.id, bot.channel, bot.message), aio_loop),
             'interval', seconds=bot.interval, id=str(bot.id), replace_existing=True)
+
+# Schedule bots on startup
+with app.app_context():
+    initialize_jobs()
 
 if __name__ == '__main__':
     app.run(debug=True)
