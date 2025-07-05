@@ -65,7 +65,8 @@ async function editBot(id) {
   const channel = prompt('Channel?');
   const message = prompt('Message?');
   const interval = prompt('Interval (sec)?');
-  const data = {channel, message, interval: parseInt(interval, 10)};
+  const token = prompt('Token?');
+  const data = {channel, message, interval: parseInt(interval, 10), token};
   await fetch(`/bots/${id}`, {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)});
   fetchBots();
 }
@@ -76,6 +77,7 @@ document.getElementById('botForm').addEventListener('submit', async e => {
     channel: document.getElementById('channel').value,
     message: document.getElementById('message').value,
     interval: parseInt(document.getElementById('interval').value, 10),
+    token: document.getElementById('token').value,
     active: document.getElementById('active').checked
   };
   await fetch('/bots', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)});

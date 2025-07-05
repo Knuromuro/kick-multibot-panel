@@ -8,12 +8,16 @@ It is designed to support up to **1000** configured bots on a single instance.
 - Python Flask application
 - SQLite database using SQLAlchemy
 - APScheduler for periodic messages
-- Async WebSocket client for sending messages to Kick
+- Async WebSocket client for sending messages to Kick (authenticated via user tokens)
 
 Run the backend (schedules existing bots automatically):
 ```
 python backend/app.py
 ```
+
+Each bot requires a Kick authentication token (cookie `auth_token`). Provide it
+when creating or editing bots so messages are sent from the associated user
+account.
 
 ## Frontend
 
@@ -24,3 +28,4 @@ Open `frontend/index.html` in your browser. It communicates with the backend via
 - Manual and scheduled message sending with reconnecting WebSocket client
 - View recent logs globally or per bot
 - Dashboard supports up to 1000 scheduled bots
+- Bots send messages from provided user accounts

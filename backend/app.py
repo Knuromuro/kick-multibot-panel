@@ -26,6 +26,7 @@ class Bot(db.Model):
     channel = db.Column(db.String(80), nullable=False)
     message = db.Column(db.String(200), nullable=False)
     interval = db.Column(db.Integer, nullable=False)
+    token = db.Column(db.String(200), nullable=False)
     active = db.Column(db.Boolean, default=True)
 
 class Log(db.Model):
@@ -42,17 +43,19 @@ scheduler = BackgroundScheduler(
 scheduler.start()
 
 class KickClient:
-    """Minimal WebSocket client with reconnect logic."""
+    """Minimal WebSocket client with reconnect logic for a user."""
 
-    def __init__(self, uri: str):
+    def __init__(self, uri: str, token: str):
         self.uri = uri
+        self.token = token
         self.ws = None
         self._lock = asyncio.Lock()
 
     async def _connect(self):
         for attempt in range(1, MAX_RETRIES + 1):
             try:
-                self.ws = await websockets.connect(self.uri)
+                headers = {"Authorization": f"Bearer {self.token}"}
+                self.ws = await websockets.connect(self.uri, extra_headers=headers)
                 return
             except Exception as exc:  # pragma: no cover - connection errors
                 print(f"connect attempt {attempt} failed: {exc}")
@@ -70,14 +73,22 @@ class KickClient:
                 await self.ws.send(payload)
 
 
-kick_client = KickClient("wss://chat.kick.com")
+KICK_URI = "wss://chat.kick.com"
+_clients = {}
 
-async def send_kick_message(channel: str, message: str):
-    """Wrapper used by scheduled jobs."""
-    await kick_client.send(channel, message)
+def get_client(token: str) -> "KickClient":
+    """Return a cached KickClient for a given token."""
+    if token not in _clients:
+        _clients[token] = KickClient(KICK_URI, token)
+    return _clients[token]
 
-async def schedule_job(bot_id: int, channel: str, message: str):
-    await send_kick_message(channel, message)
+async def send_kick_message(token: str, channel: str, message: str):
+    """Send a message using a user's token."""
+    client = get_client(token)
+    await client.send(channel, message)
+
+async def schedule_job(bot_id: int, token: str, channel: str, message: str):
+    await send_kick_message(token, channel, message)
     log = Log(bot_id=bot_id, message=message, channel=channel)
     db.session.add(log)
     db.session.commit()
@@ -108,13 +119,22 @@ def index():
 @app.route('/bots', methods=['GET'])
 def list_bots():
     bots = Bot.query.all()
-    return jsonify([{"id": b.id, "channel": b.channel, "message": b.message,
-                     "interval": b.interval, "active": b.active} for b in bots])
+    return jsonify([
+        {
+            "id": b.id,
+            "channel": b.channel,
+            "message": b.message,
+            "interval": b.interval,
+            "active": b.active,
+        }
+        for b in bots
+    ])
 
 @app.route('/bots', methods=['POST'])
 def create_bot():
     data = request.json
-    bot = Bot(channel=data['channel'], message=data['message'], interval=data['interval'])
+    bot = Bot(channel=data['channel'], message=data['message'],
+              interval=data['interval'], token=data['token'])
     db.session.add(bot)
     db.session.commit()
     schedule_bot(bot)
@@ -127,6 +147,7 @@ def update_bot(bot_id):
     bot.channel = data.get('channel', bot.channel)
     bot.message = data.get('message', bot.message)
     bot.interval = data.get('interval', bot.interval)
+    bot.token = data.get('token', bot.token)
     bot.active = data.get('active', bot.active)
     db.session.commit()
     schedule_bot(bot)
@@ -152,7 +173,9 @@ def toggle_bot(bot_id):
 @app.route('/bots/<int:bot_id>/send', methods=['POST'])
 def send_now(bot_id):
     bot = Bot.query.get_or_404(bot_id)
-    asyncio.run_coroutine_threadsafe(schedule_job(bot.id, bot.channel, bot.message), aio_loop)
+    asyncio.run_coroutine_threadsafe(
+        schedule_job(bot.id, bot.token, bot.channel, bot.message), aio_loop
+    )
     return jsonify({'status': 'sent'})
 
 @app.route('/logs', methods=['GET'])
@@ -170,11 +193,15 @@ def get_bot_logs(bot_id):
 
 def schedule_bot(bot: Bot):
     """Create or update a scheduled job for the bot."""
-    scheduler.remove_job(str(bot.id)) if scheduler.get_job(str(bot.id)) else None
+    if scheduler.get_job(str(bot.id)):
+        scheduler.remove_job(str(bot.id))
     if bot.active:
-        scheduler.add_job(lambda: asyncio.run_coroutine_threadsafe(
-            schedule_job(bot.id, bot.channel, bot.message), aio_loop),
-            'interval', seconds=bot.interval, id=str(bot.id), replace_existing=True)
+        scheduler.add_job(
+            lambda: asyncio.run_coroutine_threadsafe(
+                schedule_job(bot.id, bot.token, bot.channel, bot.message), aio_loop
+            ),
+            'interval', seconds=bot.interval, id=str(bot.id), replace_existing=True
+        )
 
 # Schedule bots on startup
 with app.app_context():
