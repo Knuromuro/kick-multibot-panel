@@ -23,6 +23,12 @@ Install dependencies with:
 pip install -r requirements.txt
 ```
 
+You can quickly create a bot from the command line using the helper script:
+```
+python scripts/add_bot.py --channel mychannel --message "Hello" \
+    --interval 600 --token <auth_token>
+```
+
 Each bot requires a Kick authentication token (cookie `auth_token`). Provide it
 when creating or editing bots so messages are sent from the associated user
 account.
