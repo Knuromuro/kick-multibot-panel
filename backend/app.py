@@ -9,6 +9,9 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.executors.pool import ThreadPoolExecutor
 import websockets
 
+# retry attempts for websocket messages
+MAX_RETRIES = 3
+
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///bots.db'
 db = SQLAlchemy(app)
@@ -34,14 +37,18 @@ scheduler = BackgroundScheduler(
 scheduler.start()
 
 async def send_kick_message(channel: str, message: str):
-    """Send a message to Kick chat via WebSocket."""
+    """Send a message to Kick chat via WebSocket with simple reconnect."""
     uri = "wss://chat.kick.com"
-    try:
-        async with websockets.connect(uri) as ws:
-            payload = json.dumps({"channel": channel, "message": message})
-            await ws.send(payload)
-    except Exception as e:
-        print(f"Failed to send message: {e}")
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            async with websockets.connect(uri) as ws:
+                payload = json.dumps({"channel": channel, "message": message})
+                await ws.send(payload)
+                return
+        except Exception as e:
+            print(f"Attempt {attempt} failed: {e}")
+            await asyncio.sleep(1)
+    print("All retries failed - message not sent")
 
 async def schedule_job(bot_id: int, channel: str, message: str):
     await send_kick_message(channel, message)
@@ -103,6 +110,15 @@ def delete_bot(bot_id):
     db.session.commit()
     return jsonify({'status': 'deleted'})
 
+@app.route('/bots/<int:bot_id>/toggle', methods=['POST'])
+def toggle_bot(bot_id):
+    """Toggle bot active state."""
+    bot = Bot.query.get_or_404(bot_id)
+    bot.active = not bot.active
+    db.session.commit()
+    schedule_bot(bot)
+    return jsonify({'active': bot.active})
+
 @app.route('/bots/<int:bot_id>/send', methods=['POST'])
 def send_now(bot_id):
     bot = Bot.query.get_or_404(bot_id)
@@ -128,4 +144,4 @@ with app.app_context():
     initialize_jobs()
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', debug=True)
