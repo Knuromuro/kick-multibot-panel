@@ -134,6 +134,7 @@ def list_bots():
             "channel": b.channel,
             "message": b.message,
             "interval": b.interval,
+            "token": b.token,
             "active": b.active,
         }
         for b in bots
@@ -153,6 +154,19 @@ def create_bot():
     db.session.commit()
     schedule_bot(bot)
     return jsonify({'id': bot.id}), 201
+
+@app.route('/bots/<int:bot_id>', methods=['GET'])
+def get_bot(bot_id):
+    """Return single bot details."""
+    bot = Bot.query.get_or_404(bot_id)
+    return jsonify({
+        'id': bot.id,
+        'channel': bot.channel,
+        'message': bot.message,
+        'interval': bot.interval,
+        'token': bot.token,
+        'active': bot.active,
+    })
 
 @app.route('/bots/<int:bot_id>', methods=['PUT'])
 def update_bot(bot_id):

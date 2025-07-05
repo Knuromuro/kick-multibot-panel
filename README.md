@@ -43,11 +43,12 @@ account.
 
 ## Frontend
 
-Open `frontend/index.html` in your browser. It communicates with the backend via REST endpoints and auto-refreshes bot and log lists every few seconds.
+Open `frontend/index.html` in your browser. It communicates with the backend via REST endpoints and auto-refreshes bot and log lists every few seconds. Bots can be edited using a dialog that pre-fills their current settings.
 
 ### Features
-- Create, edit, toggle and delete bots
+- Create, edit, toggle and delete bots (editing opens a dialog with existing values)
 - Manual and scheduled message sending with reconnecting WebSocket client
 - View recent logs globally or per bot
 - Dashboard supports up to 1000 scheduled bots
 - Bots send messages from provided user accounts
+- All bot options are accessible directly from the dashboard

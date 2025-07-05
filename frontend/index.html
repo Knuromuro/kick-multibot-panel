@@ -33,6 +33,19 @@
     <tbody></tbody>
   </table>
 
+  <dialog id="editDialog">
+    <form id="editForm">
+      <input type="hidden" id="edit-id">
+      Channel: <input type="text" id="edit-channel" required><br>
+      Message: <input type="text" id="edit-message" required><br>
+      Interval (sec): <input type="number" id="edit-interval" required><br>
+      Token: <input type="text" id="edit-token" required><br>
+      Active: <input type="checkbox" id="edit-active"><br>
+      <button type="submit">Save</button>
+      <button type="button" onclick="closeEdit()">Cancel</button>
+    </form>
+  </dialog>
+
   <h2>Logs</h2>
   <table id="logTable">
     <thead>

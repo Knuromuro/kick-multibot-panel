@@ -1,9 +1,11 @@
+let botCache = [];
+
 async function fetchBots() {
   const res = await fetch('/bots');
-  const bots = await res.json();
+  botCache = await res.json();
   const tbody = document.querySelector('#botTable tbody');
   tbody.innerHTML = '';
-  bots.forEach(bot => {
+  botCache.forEach(bot => {
     const row = document.createElement('tr');
     row.innerHTML =
       `<td>${bot.id}</td>` +
@@ -14,7 +16,7 @@ async function fetchBots() {
       `<td>` +
       `<button onclick="sendNow(${bot.id})">Send</button> ` +
       `<button onclick="toggleBot(${bot.id})">Toggle</button> ` +
-      `<button onclick="editBot(${bot.id})">Edit</button> ` +
+      `<button onclick="openEdit(${bot.id})">Edit</button> ` +
       `<button onclick="deleteBot(${bot.id})">Delete</button> ` +
       `<button onclick="viewLogs(${bot.id})">Logs</button>` +
       `</td>`;
@@ -61,21 +63,22 @@ async function deleteBot(id) {
   fetchBots();
 }
 
-async function editBot(id) {
-  const channel = prompt('Channel?');
-  const message = prompt('Message?');
-  const interval = prompt('Interval (sec)?');
-  const token = prompt('Token?');
-  const active = confirm('Active? OK=yes, Cancel=no');
-  const data = {
-    channel,
-    message,
-    interval: parseInt(interval, 10),
-    token,
-    active,
-  };
-  await fetch(`/bots/${id}`, {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)});
-  fetchBots();
+function openEdit(id) {
+  fetch(`/bots/${id}`)
+    .then(res => res.json())
+    .then(bot => {
+      document.getElementById('edit-id').value = bot.id;
+      document.getElementById('edit-channel').value = bot.channel;
+      document.getElementById('edit-message').value = bot.message;
+      document.getElementById('edit-interval').value = bot.interval;
+      document.getElementById('edit-token').value = bot.token;
+      document.getElementById('edit-active').checked = bot.active;
+      document.getElementById('editDialog').showModal();
+    });
+}
+
+function closeEdit() {
+  document.getElementById('editDialog').close();
 }
 
 document.getElementById('botForm').addEventListener('submit', async e => {
@@ -89,6 +92,21 @@ document.getElementById('botForm').addEventListener('submit', async e => {
   };
   await fetch('/bots', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)});
   e.target.reset();
+  fetchBots();
+});
+
+document.getElementById('editForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const id = document.getElementById('edit-id').value;
+  const data = {
+    channel: document.getElementById('edit-channel').value,
+    message: document.getElementById('edit-message').value,
+    interval: parseInt(document.getElementById('edit-interval').value, 10),
+    token: document.getElementById('edit-token').value,
+    active: document.getElementById('edit-active').checked
+  };
+  await fetch(`/bots/${id}`, {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)});
+  closeEdit();
   fetchBots();
 });
 
