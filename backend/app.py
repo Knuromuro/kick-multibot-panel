@@ -4,6 +4,7 @@ import asyncio
 import json
 from datetime import datetime
 from pathlib import Path
+import os
 from threading import Thread
 
 from flask import Flask, request, jsonify, send_from_directory
@@ -16,9 +17,11 @@ import websockets
 MAX_RETRIES = 3
 
 BASE_DIR = Path(__file__).resolve().parent
-app = Flask(__name__, static_folder=str(BASE_DIR.parent / 'frontend'),
-            static_url_path='')
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///bots.db'
+app = Flask(
+    __name__, static_folder=str(BASE_DIR.parent / "frontend"), static_url_path=""
+)
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///bots.db"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
 class Bot(db.Model):
@@ -37,8 +40,8 @@ class Log(db.Model):
     channel = db.Column(db.String(80))
 
 scheduler = BackgroundScheduler(
-    executors={'default': ThreadPoolExecutor(max_workers=50)},
-    job_defaults={'max_instances': 20}
+    executors={"default": ThreadPoolExecutor(max_workers=100)},
+    job_defaults={"max_instances": 50},
 )
 scheduler.start()
 
@@ -55,7 +58,12 @@ class KickClient:
         for attempt in range(1, MAX_RETRIES + 1):
             try:
                 headers = {"Authorization": f"Bearer {self.token}"}
-                self.ws = await websockets.connect(self.uri, extra_headers=headers)
+                self.ws = await websockets.connect(
+                    self.uri,
+                    extra_headers=headers,
+                    ping_interval=20,
+                    ping_timeout=20,
+                )
                 return
             except Exception as exc:  # pragma: no cover - connection errors
                 print(f"connect attempt {attempt} failed: {exc}")
@@ -68,12 +76,13 @@ class KickClient:
                 await self._connect()
             try:
                 await self.ws.send(payload)
-            except Exception:
+            except Exception as exc:
+                print(f"send failed: {exc}")
                 await self._connect()
                 await self.ws.send(payload)
 
 
-KICK_URI = "wss://chat.kick.com"
+KICK_URI = os.getenv("KICK_URI", "wss://chat.kick.com")
 _clients = {}
 
 def get_client(token: str) -> "KickClient":
@@ -133,8 +142,13 @@ def list_bots():
 @app.route('/bots', methods=['POST'])
 def create_bot():
     data = request.json
-    bot = Bot(channel=data['channel'], message=data['message'],
-              interval=data['interval'], token=data['token'])
+    bot = Bot(
+        channel=data["channel"],
+        message=data["message"],
+        interval=data["interval"],
+        token=data["token"],
+        active=data.get("active", True),
+    )
     db.session.add(bot)
     db.session.commit()
     schedule_bot(bot)
@@ -207,5 +221,6 @@ def schedule_bot(bot: Bot):
 with app.app_context():
     initialize_jobs()
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', debug=True)
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", "5000"))
+    app.run(host="0.0.0.0", port=port, debug=True)

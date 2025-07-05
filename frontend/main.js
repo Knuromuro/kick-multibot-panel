@@ -66,7 +66,14 @@ async function editBot(id) {
   const message = prompt('Message?');
   const interval = prompt('Interval (sec)?');
   const token = prompt('Token?');
-  const data = {channel, message, interval: parseInt(interval, 10), token};
+  const active = confirm('Active? OK=yes, Cancel=no');
+  const data = {
+    channel,
+    message,
+    interval: parseInt(interval, 10),
+    token,
+    active,
+  };
   await fetch(`/bots/${id}`, {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)});
   fetchBots();
 }

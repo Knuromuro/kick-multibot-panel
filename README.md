@@ -1,7 +1,8 @@
 # Kick Multibot Panel
 
-This project provides a simple dashboard and backend for managing multiple Kick.com chat bots.
-It is designed to support up to **1000** configured bots on a single instance.
+This project provides a simple dashboard and backend for managing multiple
+Kick.com chat bots. It is designed to support up to **1000** configured bots on
+a single instance.
 
 ## Backend
 
@@ -10,9 +11,16 @@ It is designed to support up to **1000** configured bots on a single instance.
 - APScheduler for periodic messages
 - Async WebSocket client for sending messages to Kick (authenticated via user tokens)
 
-Run the backend (schedules existing bots automatically):
+Run the backend (schedules existing bots automatically). The server port can be
+changed via the `PORT` environment variable. The WebSocket address defaults to
+`wss://chat.kick.com` but can be overridden with `KICK_URI`:
 ```
 python backend/app.py
+```
+
+Install dependencies with:
+```
+pip install -r requirements.txt
 ```
 
 Each bot requires a Kick authentication token (cookie `auth_token`). Provide it
