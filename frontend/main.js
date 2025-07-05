@@ -15,7 +15,8 @@ async function fetchBots() {
       `<button onclick="sendNow(${bot.id})">Send</button> ` +
       `<button onclick="toggleBot(${bot.id})">Toggle</button> ` +
       `<button onclick="editBot(${bot.id})">Edit</button> ` +
-      `<button onclick="deleteBot(${bot.id})">Delete</button>` +
+      `<button onclick="deleteBot(${bot.id})">Delete</button> ` +
+      `<button onclick="viewLogs(${bot.id})">Logs</button>` +
       `</td>`;
     tbody.appendChild(row);
   });
@@ -23,6 +24,18 @@ async function fetchBots() {
 
 async function fetchLogs() {
   const res = await fetch('/logs');
+  const logs = await res.json();
+  const tbody = document.querySelector('#logTable tbody');
+  tbody.innerHTML = '';
+  logs.forEach(log => {
+    const row = document.createElement('tr');
+    row.innerHTML = `<td>${log.timestamp}</td><td>${log.channel}</td><td>${log.message}</td>`;
+    tbody.appendChild(row);
+  });
+}
+
+async function viewLogs(id) {
+  const res = await fetch(`/bots/${id}/logs`);
   const logs = await res.json();
   const tbody = document.querySelector('#logTable tbody');
   tbody.innerHTML = '';
@@ -73,3 +86,4 @@ document.getElementById('botForm').addEventListener('submit', async e => {
 fetchBots();
 fetchLogs();
 setInterval(fetchLogs, 5000);
+setInterval(fetchBots, 5000);

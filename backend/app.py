@@ -1,9 +1,12 @@
+"""Backend service for managing Kick chat bots."""
+
 import asyncio
 import json
 from datetime import datetime
+from pathlib import Path
 from threading import Thread
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.executors.pool import ThreadPoolExecutor
@@ -12,7 +15,9 @@ import websockets
 # retry attempts for websocket messages
 MAX_RETRIES = 3
 
-app = Flask(__name__)
+BASE_DIR = Path(__file__).resolve().parent
+app = Flask(__name__, static_folder=str(BASE_DIR.parent / 'frontend'),
+            static_url_path='')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///bots.db'
 db = SQLAlchemy(app)
 
@@ -36,19 +41,40 @@ scheduler = BackgroundScheduler(
 )
 scheduler.start()
 
-async def send_kick_message(channel: str, message: str):
-    """Send a message to Kick chat via WebSocket with simple reconnect."""
-    uri = "wss://chat.kick.com"
-    for attempt in range(1, MAX_RETRIES + 1):
-        try:
-            async with websockets.connect(uri) as ws:
-                payload = json.dumps({"channel": channel, "message": message})
-                await ws.send(payload)
+class KickClient:
+    """Minimal WebSocket client with reconnect logic."""
+
+    def __init__(self, uri: str):
+        self.uri = uri
+        self.ws = None
+        self._lock = asyncio.Lock()
+
+    async def _connect(self):
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                self.ws = await websockets.connect(self.uri)
                 return
-        except Exception as e:
-            print(f"Attempt {attempt} failed: {e}")
-            await asyncio.sleep(1)
-    print("All retries failed - message not sent")
+            except Exception as exc:  # pragma: no cover - connection errors
+                print(f"connect attempt {attempt} failed: {exc}")
+                await asyncio.sleep(1)
+
+    async def send(self, channel: str, message: str):
+        payload = json.dumps({"channel": channel, "message": message})
+        async with self._lock:
+            if not self.ws or self.ws.closed:
+                await self._connect()
+            try:
+                await self.ws.send(payload)
+            except Exception:
+                await self._connect()
+                await self.ws.send(payload)
+
+
+kick_client = KickClient("wss://chat.kick.com")
+
+async def send_kick_message(channel: str, message: str):
+    """Wrapper used by scheduled jobs."""
+    await kick_client.send(channel, message)
 
 async def schedule_job(bot_id: int, channel: str, message: str):
     await send_kick_message(channel, message)
@@ -75,6 +101,10 @@ def initialize_jobs():
 with app.app_context():
     db.create_all()
 
+@app.route('/')
+def index():
+    """Serve the single page application."""
+    return app.send_static_file('index.html')
 @app.route('/bots', methods=['GET'])
 def list_bots():
     bots = Bot.query.all()
@@ -130,6 +160,13 @@ def get_logs():
     logs = Log.query.order_by(Log.timestamp.desc()).limit(50).all()
     return jsonify([{"id": l.id, "bot_id": l.bot_id, "timestamp": l.timestamp.isoformat(),
                      "message": l.message, "channel": l.channel} for l in logs])
+
+@app.route('/bots/<int:bot_id>/logs', methods=['GET'])
+def get_bot_logs(bot_id):
+    """Return recent logs for a single bot."""
+    logs = Log.query.filter_by(bot_id=bot_id).order_by(Log.timestamp.desc()).limit(50).all()
+    return jsonify([{"id": l.id, "timestamp": l.timestamp.isoformat(), "message": l.message,
+                     "channel": l.channel} for l in logs])
 
 def schedule_bot(bot: Bot):
     """Create or update a scheduled job for the bot."""
