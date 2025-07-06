@@ -1,5 +1,2 @@
 Flask
-Flask-SQLAlchemy
-APScheduler
-websockets
-requests
+selenium

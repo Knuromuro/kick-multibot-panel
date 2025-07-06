@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h1 class="text-xl mb-4">Dashboard</h1>
+<form action="{{ url_for('start_all') }}" method="post" class="mb-4">
+  <button class="bg-green-500 text-white px-4 py-2">Start All</button>
+</form>
+<ul class="space-y-2">
+  {% for g in groups %}
+  <li>
+    <form action="{{ url_for('start_group', name=g.name) }}" method="post" class="inline">
+      <button class="bg-blue-500 text-white px-2 py-1">Start {{ g.name }}</button>
+    </form>
+  </li>
+  {% endfor %}
+</ul>
+<a href="{{ url_for('logout') }}" class="text-blue-600 inline-block mt-4">Logout</a>
+{% endblock %}
