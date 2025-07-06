@@ -40,3 +40,5 @@ def dashboard():
 def register_web(app):
     """Register blueprint with the given Flask app."""
     app.register_blueprint(bp)
+    # provide an alias so url_for('dashboard') works
+    app.add_url_rule('/dashboard', 'dashboard', dashboard)
