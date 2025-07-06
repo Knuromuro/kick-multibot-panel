@@ -39,6 +39,8 @@ Environment variables:
 - `SECRET_KEY` – session secret
 - `PORT` – server port (default `5000`)
 - `DEBUG` – set to `false` to disable Flask debug mode
+- Scheduler jobs run with the Flask application context so logs are reliably
+  recorded to the database
 
 ## Bots
 

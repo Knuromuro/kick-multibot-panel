@@ -16,6 +16,7 @@ import websockets
 
 from app.routes import register_web
 from shared.kick import login as kick_login
+from shared.logger import logger
 
 # retry attempts for websocket messages
 MAX_RETRIES = 3
@@ -77,7 +78,7 @@ class KickClient:
                 )
                 return
             except Exception as exc:  # pragma: no cover - connection errors
-                print(f"connect attempt {attempt} failed: {exc}")
+                logger.warning("connect attempt %s failed: %s", attempt, exc)
                 await asyncio.sleep(1)
         raise ConnectionError("Unable to connect to Kick chat")
 
@@ -91,7 +92,7 @@ class KickClient:
                     await self.ws.send(payload)
                     return
                 except Exception as exc:
-                    print(f"send failed attempt {attempt}: {exc}")
+                    logger.warning("send failed attempt %s: %s", attempt, exc)
                     await self._connect()
             raise ConnectionError("Send retries exceeded")
 
@@ -112,9 +113,10 @@ async def send_kick_message(token: str, channel: str, message: str):
 
 async def schedule_job(bot_id: int, token: str, channel: str, message: str):
     await send_kick_message(token, channel, message)
-    log = Log(bot_id=bot_id, message=message, channel=channel)
-    db.session.add(log)
-    db.session.commit()
+    with app.app_context():
+        log = Log(bot_id=bot_id, message=message, channel=channel)
+        db.session.add(log)
+        db.session.commit()
 
 def start_async_loop(loop):
     asyncio.set_event_loop(loop)
