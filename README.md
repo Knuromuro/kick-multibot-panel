@@ -23,6 +23,12 @@ Install dependencies with:
 pip install -r requirements.txt
 ```
 
+You can retrieve your Kick `auth_token` by logging in with the helper script:
+```
+python scripts/login_kick.py --email user@example.com --password mypass
+```
+Copy the printed token when creating or editing bots.
+
 You can quickly create a bot from the command line using the helper script:
 ```
 python scripts/add_bot.py --channel mychannel --message "Hello" \
