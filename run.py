@@ -9,4 +9,12 @@ register_web(app)
 if __name__ == '__main__':
     debug = os.getenv('DEBUG', 'true').lower() == 'true'
     port = int(os.getenv('PORT', '5000'))
-    app.run(host='0.0.0.0', port=port, debug=debug)
+    host = os.getenv('HOST', '0.0.0.0')
+    try:
+        app.run(host=host, port=port, debug=debug)
+    except OSError as exc:
+        if exc.errno == 98:  # Address already in use
+            print(f"Port {port} in use, falling back to random port")
+            app.run(host=host, port=0, debug=debug)
+        else:
+            raise

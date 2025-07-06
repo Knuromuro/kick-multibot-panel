@@ -20,7 +20,11 @@ pip install -r requirements.txt
 PORT=8000 DEBUG=false python run.py
 ```
 
-Open <http://localhost:5000/login> and sign in. After logging in, the dashboard lets you manage up to 1000 bots.
+If the selected port is already taken, the server automatically falls back to a
+random free port and prints a notice.
+
+Open <http://localhost:5000/login> and sign in. After logging in, the dashboard
+lets you manage up to 1000 bots.
 
 Environment variables:
 
