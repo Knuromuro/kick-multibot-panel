@@ -18,8 +18,11 @@ MAX_RETRIES = 3
 
 BASE_DIR = Path(__file__).resolve().parent
 app = Flask(
-    __name__, static_folder=str(BASE_DIR.parent / "frontend"), static_url_path=""
+    __name__,
+    static_folder=str(BASE_DIR.parent / "app" / "static"),
+    template_folder=str(BASE_DIR.parent / "app" / "templates"),
 )
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "change-me")
 db_path = os.getenv("DB_PATH", "bots.db")
 app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_path}"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -124,13 +127,6 @@ def initialize_jobs():
     for bot in Bot.query.all():
         schedule_bot(bot)
 
-with app.app_context():
-    db.create_all()
-
-@app.route('/')
-def index():
-    """Serve the single page application."""
-    return app.send_static_file('index.html')
 @app.route('/bots', methods=['GET'])
 def list_bots():
     bots = Bot.query.all()
@@ -237,10 +233,13 @@ def schedule_bot(bot: Bot):
             'interval', seconds=bot.interval, id=str(bot.id), replace_existing=True
         )
 
-# Schedule bots on startup
-with app.app_context():
-    initialize_jobs()
+def create_app():
+    """Return the configured Flask app."""
+    with app.app_context():
+        db.create_all()
+        initialize_jobs()
+    return app
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "5000"))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    create_app().run(host="0.0.0.0", port=port, debug=True)

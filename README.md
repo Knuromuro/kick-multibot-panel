@@ -1,32 +1,40 @@
-# KickBot
+# KickBot Dashboard
 
-KickBot provides a simple web panel for launching Selenium based bots for Kick.com.
-Accounts and bot groups are defined in `data.json` and can be started from the dashboard after logging in.
+KickBot is a simple web panel for managing chat bots for [Kick.com](https://kick.com). Bots send messages to channels over WebSocket on a schedule and can be controlled from the dashboard.
 
 ## Features
 
-- Login page with fixed `admin/admin` credentials
-- Dashboard listing groups with buttons to start them or all at once
-- JSON configuration for accounts and groups
-- Selenium bot runner that logs in and reads per account message files
-- Flash messages showing operation status
+- Login page (`admin`/`admin`)
+- Create, edit and delete bots with individual messages and intervals
+- Manual "Send now" button and automatic scheduling
+- Logs stored in a local SQLite database
+- Web dashboard with live bot and log updates
 
-## Running
+## Setup
 
-Install dependencies and start the web app:
+Install dependencies and start the server:
 
 ```bash
 pip install -r requirements.txt
-python -m app.app
+python run.py
 ```
 
-Open [http://localhost:5000/login](http://localhost:5000/login) and log in with `admin/admin`.
+Open <http://localhost:5000/login> and sign in. After logging in, the dashboard lets you manage up to 1000 bots.
 
-## Configuration
+Environment variables:
 
-Edit `data.json` to configure accounts and groups. Each account may specify a proxy. Message
-files should be stored in the `messages/` directory using the account id as the filename
-(e.g. `messages/1.txt`).
+- `DB_PATH` – path to the SQLite file (default `bots.db`)
+- `KICK_URI` – Kick WebSocket URI
+- `WORKERS` – scheduler thread pool size
+- `MAX_INSTANCES` – max concurrent jobs
+- `SECRET_KEY` – session secret
 
-Bots are launched in separate processes using `subprocess.Popen` and will open Chrome windows
-when executed.
+## Bots
+
+Each bot requires a Kick `auth_token` which can be obtained using `scripts/login_kick.py`. Bots are created and scheduled automatically. Logs can be viewed per bot from the dashboard.
+
+## Scripts
+
+- `scripts/add_bot.py` – create a bot via the API
+- `scripts/run_bot.py` – run a standalone bot
+- `scripts/login_kick.py` – retrieve a Kick auth token
