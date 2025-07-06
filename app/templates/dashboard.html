@@ -9,15 +9,17 @@
     Message: <input type="text" id="message" class="border" required> <br>
     Interval (sec): <input type="number" id="interval" value="600" class="border" required> <br>
     Token: <input type="text" id="token" class="border" required> <br>
+    Group: <input type="text" id="group" class="border"> <br>
     Active: <input type="checkbox" id="active" checked> <br>
     <button type="submit" class="bg-green-500 text-white px-2 py-1">Create</button>
   </form>
 </div>
 
 <h2 class="text-lg font-bold mt-6">Bots</h2>
+<button onclick="startAll()" class="bg-purple-500 text-white px-2 py-1 mb-2">Start All</button>
 <table id="botTable" class="w-full border-collapse mb-4">
   <thead>
-    <tr><th>ID</th><th>Channel</th><th>Message</th><th>Interval</th><th>Active</th><th>Actions</th></tr>
+    <tr><th>ID</th><th>Channel</th><th>Message</th><th>Interval</th><th>Group</th><th>Active</th><th>Actions</th></tr>
   </thead>
   <tbody></tbody>
 </table>
@@ -29,6 +31,7 @@
     Message: <input type="text" id="edit-message" required><br>
     Interval (sec): <input type="number" id="edit-interval" required><br>
     Token: <input type="text" id="edit-token" required><br>
+    Group: <input type="text" id="edit-group"><br>
     Active: <input type="checkbox" id="edit-active"><br>
     <button type="submit" class="bg-blue-500 text-white px-2 py-1">Save</button>
     <button type="button" onclick="closeEdit()">Cancel</button>

@@ -8,6 +8,7 @@ KickBot is a simple web panel for managing chat bots for [Kick.com](https://kick
 - Create, edit and delete bots with individual messages and intervals
 - Manual "Send now" button and automatic scheduling
 - Logs stored in a local SQLite database
+- Optional bot groups with "Start All" and "Start group" actions
 - Web dashboard with live bot and log updates
 
 ## Setup
@@ -41,7 +42,9 @@ Environment variables:
 
 ## Bots
 
-Each bot requires a Kick `auth_token` which can be obtained using `scripts/login_kick.py`. Bots are created and scheduled automatically. Logs can be viewed per bot from the dashboard.
+Each bot requires a Kick `auth_token` which can be obtained using `scripts/login_kick.py`. Bots belong to optional *groups* so you can trigger messages for multiple bots at once. Logs can be viewed per bot from the dashboard and you can start all bots or a single group via dashboard buttons.
+
+When creating or editing a bot in the dashboard, leave the group field blank if you do not want the bot included in group actions.
 
 ## Scripts
 

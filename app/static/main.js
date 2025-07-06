@@ -13,13 +13,15 @@ async function fetchBots() {
       `<td>${bot.channel}</td>` +
       `<td>${bot.message}</td>` +
       `<td>${bot.interval}</td>` +
+      `<td>${bot.group || ''}</td>` +
       `<td>${bot.active ? '✅' : '❌'}</td>` +
       `<td>` +
       `<button onclick="sendNow(${bot.id})">Send</button> ` +
       `<button onclick="toggleBot(${bot.id})">Toggle</button> ` +
       `<button onclick="openEdit(${bot.id})">Edit</button> ` +
       `<button onclick="deleteBot(${bot.id})">Delete</button> ` +
-      `<button onclick="viewLogs(${bot.id})">Logs</button>` +
+      `<button onclick="viewLogs(${bot.id})">Logs</button> ` +
+      `<button onclick="startGroup('${bot.group}')">Start group</button>` +
       `</td>`;
     tbody.appendChild(row);
   });
@@ -56,6 +58,17 @@ async function sendNow(id) {
   fetchLogs();
 }
 
+async function startGroup(name) {
+  if (!name) return;
+  await fetch(`/start_group/${encodeURIComponent(name)}`, {method: 'POST'}).catch(() => null);
+  fetchLogs();
+}
+
+async function startAll() {
+  await fetch('/start_all', {method: 'POST'}).catch(() => null);
+  fetchLogs();
+}
+
 async function toggleBot(id) {
   await fetch(`/bots/${id}/toggle`, {method: 'POST'}).catch(() => null);
   fetchBots();
@@ -75,6 +88,7 @@ function openEdit(id) {
       document.getElementById('edit-message').value = bot.message;
       document.getElementById('edit-interval').value = bot.interval;
       document.getElementById('edit-token').value = bot.token;
+      document.getElementById('edit-group').value = bot.group || '';
       document.getElementById('edit-active').checked = bot.active;
       document.getElementById('editDialog').showModal();
     })
@@ -92,6 +106,7 @@ document.getElementById('botForm').addEventListener('submit', async e => {
     message: document.getElementById('message').value,
     interval: parseInt(document.getElementById('interval').value, 10),
     token: document.getElementById('token').value,
+    group: document.getElementById('group').value,
     active: document.getElementById('active').checked
   };
   await fetch('/bots', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)}).catch(() => null);
@@ -107,6 +122,7 @@ document.getElementById('editForm').addEventListener('submit', async e => {
     message: document.getElementById('edit-message').value,
     interval: parseInt(document.getElementById('edit-interval').value, 10),
     token: document.getElementById('edit-token').value,
+    group: document.getElementById('edit-group').value,
     active: document.getElementById('edit-active').checked
   };
   await fetch(`/bots/${id}`, {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)}).catch(() => null);

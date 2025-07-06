@@ -9,6 +9,7 @@ from threading import Thread
 
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import inspect, text
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.executors.pool import ThreadPoolExecutor
 import websockets
@@ -37,6 +38,7 @@ class Bot(db.Model):
     interval = db.Column(db.Integer, nullable=False)
     token = db.Column(db.String(200), nullable=False)
     active = db.Column(db.Boolean, default=True)
+    group = db.Column(db.String(80))
 
 class Log(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -140,6 +142,7 @@ def list_bots():
             "interval": b.interval,
             "token": b.token,
             "active": b.active,
+            "group": b.group,
         }
         for b in bots
     ])
@@ -153,6 +156,7 @@ def create_bot():
         interval=data["interval"],
         token=data["token"],
         active=data.get("active", True),
+        group=data.get("group"),
     )
     db.session.add(bot)
     db.session.commit()
@@ -170,6 +174,7 @@ def get_bot(bot_id):
         'interval': bot.interval,
         'token': bot.token,
         'active': bot.active,
+        'group': bot.group,
     })
 
 @app.route('/bots/<int:bot_id>', methods=['PUT'])
@@ -181,6 +186,7 @@ def update_bot(bot_id):
     bot.interval = data.get('interval', bot.interval)
     bot.token = data.get('token', bot.token)
     bot.active = data.get('active', bot.active)
+    bot.group = data.get('group', bot.group)
     db.session.commit()
     schedule_bot(bot)
     return jsonify({'status': 'updated'})
@@ -209,6 +215,26 @@ def send_now(bot_id):
         schedule_job(bot.id, bot.token, bot.channel, bot.message), aio_loop
     )
     return jsonify({'status': 'sent'})
+
+@app.route('/start_all', methods=['POST'])
+def start_all():
+    """Trigger all active bots once."""
+    bots = Bot.query.filter_by(active=True).all()
+    for bot in bots:
+        asyncio.run_coroutine_threadsafe(
+            schedule_job(bot.id, bot.token, bot.channel, bot.message), aio_loop
+        )
+    return jsonify({'count': len(bots)})
+
+@app.route('/start_group/<group>', methods=['POST'])
+def start_group(group):
+    """Trigger all active bots in a group."""
+    bots = Bot.query.filter_by(group=group, active=True).all()
+    for bot in bots:
+        asyncio.run_coroutine_threadsafe(
+            schedule_job(bot.id, bot.token, bot.channel, bot.message), aio_loop
+        )
+    return jsonify({'count': len(bots)})
 
 @app.route('/logs', methods=['GET'])
 def get_logs():
@@ -239,6 +265,12 @@ def create_app():
     """Return the configured Flask app."""
     with app.app_context():
         db.create_all()
+        # add missing columns for upgrades
+        insp = inspect(db.engine)
+        cols = [c['name'] for c in insp.get_columns('bot')]
+        if 'group' not in cols:
+            with db.engine.begin() as conn:
+                conn.execute(text('ALTER TABLE bot ADD COLUMN "group" VARCHAR(80)'))
         initialize_jobs()
         register_web(app)
     return app
