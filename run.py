@@ -1,3 +1,5 @@
+"""Entry point for the KickBot dashboard and API server."""
+
 import os
 
 from backend.app import create_app
