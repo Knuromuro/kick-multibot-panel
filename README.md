@@ -13,7 +13,9 @@ a single instance.
 
 Run the backend (schedules existing bots automatically). The server port can be
 changed via the `PORT` environment variable. The WebSocket address defaults to
-`wss://chat.kick.com` but can be overridden with `KICK_URI`:
+`wss://chat.kick.com` but can be overridden with `KICK_URI`. The SQLite file
+defaults to `bots.db` but can be set with `DB_PATH`. Scheduler limits can be
+tuned with `WORKERS` and `MAX_INSTANCES`:
 ```
 python backend/app.py
 ```

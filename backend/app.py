@@ -7,7 +7,7 @@ from pathlib import Path
 import os
 from threading import Thread
 
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.executors.pool import ThreadPoolExecutor
@@ -20,7 +20,8 @@ BASE_DIR = Path(__file__).resolve().parent
 app = Flask(
     __name__, static_folder=str(BASE_DIR.parent / "frontend"), static_url_path=""
 )
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///bots.db"
+db_path = os.getenv("DB_PATH", "bots.db")
+app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_path}"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
@@ -39,9 +40,11 @@ class Log(db.Model):
     message = db.Column(db.String(200))
     channel = db.Column(db.String(80))
 
+sched_workers = int(os.getenv("WORKERS", "100"))
+max_instances = int(os.getenv("MAX_INSTANCES", "50"))
 scheduler = BackgroundScheduler(
-    executors={"default": ThreadPoolExecutor(max_workers=100)},
-    job_defaults={"max_instances": 50},
+    executors={"default": ThreadPoolExecutor(max_workers=sched_workers)},
+    job_defaults={"max_instances": max_instances},
 )
 scheduler.start()
 
@@ -68,18 +71,21 @@ class KickClient:
             except Exception as exc:  # pragma: no cover - connection errors
                 print(f"connect attempt {attempt} failed: {exc}")
                 await asyncio.sleep(1)
+        raise ConnectionError("Unable to connect to Kick chat")
 
     async def send(self, channel: str, message: str):
         payload = json.dumps({"channel": channel, "message": message})
         async with self._lock:
             if not self.ws or self.ws.closed:
                 await self._connect()
-            try:
-                await self.ws.send(payload)
-            except Exception as exc:
-                print(f"send failed: {exc}")
-                await self._connect()
-                await self.ws.send(payload)
+            for attempt in range(1, MAX_RETRIES + 1):
+                try:
+                    await self.ws.send(payload)
+                    return
+                except Exception as exc:
+                    print(f"send failed attempt {attempt}: {exc}")
+                    await self._connect()
+            raise ConnectionError("Send retries exceeded")
 
 
 KICK_URI = os.getenv("KICK_URI", "wss://chat.kick.com")
