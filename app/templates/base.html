@@ -15,6 +15,9 @@
       </ul>
     {% endif %}
   {% endwith %}
+  {% if session.get('user') %}
+    <a href="{{ url_for('panel.logout') }}" class="text-blue-600 underline">Logout</a>
+  {% endif %}
   {% block content %}{% endblock %}
 </body>
 </html>

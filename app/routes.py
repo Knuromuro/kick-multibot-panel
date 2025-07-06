@@ -3,8 +3,6 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 
 bp = Blueprint('panel', __name__)
 
-SECRET_KEY = 'change-me'
-
 def login_required(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
@@ -40,5 +38,5 @@ def dashboard():
 
 
 def register_web(app):
-    app.secret_key = SECRET_KEY
+    """Register blueprint with the given Flask app."""
     app.register_blueprint(bp)

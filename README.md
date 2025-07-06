@@ -16,7 +16,8 @@ Install dependencies and start the server:
 
 ```bash
 pip install -r requirements.txt
-python run.py
+# optional environment variables can be set before running
+PORT=8000 DEBUG=false python run.py
 ```
 
 Open <http://localhost:5000/login> and sign in. After logging in, the dashboard lets you manage up to 1000 bots.
@@ -28,6 +29,8 @@ Environment variables:
 - `WORKERS` – scheduler thread pool size
 - `MAX_INSTANCES` – max concurrent jobs
 - `SECRET_KEY` – session secret
+- `PORT` – server port (default `5000`)
+- `DEBUG` – set to `false` to disable Flask debug mode
 
 ## Bots
 
