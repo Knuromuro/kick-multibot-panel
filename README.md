@@ -19,6 +19,8 @@ pip install -r requirements.txt
 # optional environment variables can be set before running
 # for example, launch the app on port 8000 without debug:
 PORT=8000 DEBUG=false python run.py
+# you can also run `python backend/app.py` directly, but `run.py` ensures the
+# dashboard blueprint is registered
 ```
 
 If the selected port is already taken, the server automatically falls back to a

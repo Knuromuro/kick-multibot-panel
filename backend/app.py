@@ -13,6 +13,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.executors.pool import ThreadPoolExecutor
 import websockets
 
+from app.routes import register_web
+
 # retry attempts for websocket messages
 MAX_RETRIES = 3
 
@@ -238,6 +240,7 @@ def create_app():
     with app.app_context():
         db.create_all()
         initialize_jobs()
+        register_web(app)
     return app
 
 if __name__ == "__main__":
