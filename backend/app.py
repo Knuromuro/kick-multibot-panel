@@ -15,6 +15,7 @@ from apscheduler.executors.pool import ThreadPoolExecutor
 import websockets
 
 from app.routes import register_web
+from shared.kick import login as kick_login
 
 # retry attempts for websocket messages
 MAX_RETRIES = 3
@@ -146,6 +147,21 @@ def list_bots():
         }
         for b in bots
     ])
+
+
+@app.route('/login_kick', methods=['POST'])
+def login_kick():
+    """Return auth_token for provided Kick credentials."""
+    data = request.json
+    email = data.get('email')
+    password = data.get('password')
+    if not email or not password:
+        return jsonify({'error': 'email and password required'}), 400
+    try:
+        token = kick_login(email, password)
+    except Exception as exc:  # pragma: no cover - network failure
+        return jsonify({'error': str(exc)}), 502
+    return jsonify({'token': token})
 
 @app.route('/bots', methods=['POST'])
 def create_bot():

@@ -42,7 +42,7 @@ Environment variables:
 
 ## Bots
 
-Each bot requires a Kick `auth_token` which can be obtained using `scripts/login_kick.py`. Bots belong to optional *groups* so you can trigger messages for multiple bots at once. Logs can be viewed per bot from the dashboard and you can start all bots or a single group via dashboard buttons.
+Each bot requires a Kick `auth_token`. You can obtain a token with the helper script `scripts/login_kick.py` or by calling the `/login_kick` API endpoint with your Kick credentials. Bots belong to optional *groups* so you can trigger messages for multiple bots at once. Logs can be viewed per bot from the dashboard and you can start all bots or a single group via dashboard buttons.
 
 When creating or editing a bot in the dashboard, leave the group field blank if you do not want the bot included in group actions.
 
@@ -50,7 +50,7 @@ When creating or editing a bot in the dashboard, leave the group field blank if 
 
 - `scripts/add_bot.py` – create a bot via the API
 - `scripts/run_bot.py` – run a standalone bot
-- `scripts/login_kick.py` – retrieve a Kick auth token
+- `scripts/login_kick.py` – retrieve a Kick auth token (same as `/login_kick` API)
 
 ## Testing
 
