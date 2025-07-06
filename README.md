@@ -46,3 +46,14 @@ Each bot requires a Kick `auth_token` which can be obtained using `scripts/login
 - `scripts/add_bot.py` – create a bot via the API
 - `scripts/run_bot.py` – run a standalone bot
 - `scripts/login_kick.py` – retrieve a Kick auth token
+
+## Testing
+
+Run a quick smoke test to ensure the code compiles and the server starts:
+
+```bash
+python -m py_compile backend/app.py app/routes.py run.py \
+    bots/bot_runner.py scripts/add_bot.py scripts/login_kick.py \
+    scripts/run_bot.py shared/logger.py
+python run.py & sleep 3; pkill -f run.py
+```
