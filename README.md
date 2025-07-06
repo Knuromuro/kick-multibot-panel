@@ -17,13 +17,14 @@ Install dependencies and start the server:
 ```bash
 pip install -r requirements.txt
 # optional environment variables can be set before running
+# for example, launch the app on port 8000 without debug:
 PORT=8000 DEBUG=false python run.py
 ```
 
 If the selected port is already taken, the server automatically falls back to a
 random free port and prints a notice.
 
-Open <http://localhost:5000/login> and sign in. After logging in, the dashboard
+Open `http://localhost:<PORT>/login` (replace `<PORT>` with your chosen port) and sign in. After logging in, the dashboard
 lets you manage up to 1000 bots.
 
 Environment variables:
