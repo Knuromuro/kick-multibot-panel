@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}KickBot{% endblock %}</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body class="p-4">
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      <ul class="mb-4">
+        {% for m in messages %}
+          <li class="bg-green-200 p-2 mb-2">{{ m }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  {% endwith %}
+  {% if session.get('user') %}
+    <a href="{{ url_for('panel.logout') }}" class="text-blue-600 underline">Logout</a>
+  {% endif %}
+  {% block content %}{% endblock %}
+</body>
+</html>

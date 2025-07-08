@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h1 class="text-xl mb-4">KickBot Manager</h1>
+<section class="mb-6">
+  <h2 class="font-bold">Groups</h2>
+  <form id="groupForm" class="space-y-2 mb-4">
+    Name: <input id="g-name" class="border" required>
+    Target: <input id="g-target" class="border" required>
+    Interval: <input id="g-interval" type="number" value="600" class="border" required>
+    <button class="bg-green-600 text-white px-2 py-1" type="submit">Create</button>
+  </form>
+  <table id="groupTable" class="w-full border-collapse"></table>
+</section>
+<section class="mb-6">
+  <h2 class="font-bold">Accounts</h2>
+  <form id="accountForm" class="space-y-2 mb-4">
+    Username: <input id="a-user" class="border" required>
+    Password: <input id="a-pass" type="password" class="border" required>
+    Proxy: <input id="a-proxy" class="border">
+    Messages file: <input id="a-msg" class="border">
+    Group ID: <input id="a-group" type="number" class="border" required>
+    <button class="bg-green-600 text-white px-2 py-1" type="submit">Create</button>
+  </form>
+  <table id="accountTable" class="w-full border-collapse"></table>
+</section>
+<section>
+  <h2 class="font-bold">Bots</h2>
+  <button onclick="startScheduler()" class="bg-blue-500 text-white px-2 py-1 mb-2">Start Scheduler</button>
+  <div id="bots" class="space-y-2"></div>
+</section>
+
+<dialog id="cmdDialog">
+  <form id="cmdForm" class="space-y-2">
+    <input type="hidden" id="cmd-id">
+    <select id="cmd-type" class="border">
+      <option value="send_message">Send message</option>
+      <option value="status_check">Status</option>
+      <option value="restart">Restart</option>
+      <option value="screenshot">Screenshot</option>
+    </select>
+    Args: <input id="cmd-args" class="border" placeholder="message text">
+    <button class="bg-blue-500 text-white px-2 py-1" type="submit">Run</button>
+    <button type="button" onclick="closeCmd()">Cancel</button>
+  </form>
+</dialog>
+
+<section class="mt-6">
+  <h2 class="font-bold">Logs</h2>
+  <pre id="logBox" class="bg-gray-100 p-2 h-64 overflow-auto"></pre>
+</section>
+
+<script src="{{ url_for('static', filename='main.js') }}"></script>
+{% endblock %}
