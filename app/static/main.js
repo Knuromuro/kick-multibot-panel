@@ -62,11 +62,14 @@ document.getElementById('groupForm').addEventListener('submit', async e => {
     target: document.getElementById('g-target').value,
     interval: parseInt(document.getElementById('g-interval').value, 10)
   };
-  await api('/dashboard/api/groups', {
+  const res = await api('/dashboard/api/groups', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(data)
   });
+  if (res && res.error) {
+    alert(res.error);
+  }
 });
 
 document.getElementById('accountForm').addEventListener('submit', async e => {
@@ -78,11 +81,14 @@ document.getElementById('accountForm').addEventListener('submit', async e => {
     messages_file: document.getElementById('a-msg').value,
     group_id: parseInt(document.getElementById('a-group').value, 10)
   };
-  await api('/dashboard/api/accounts', {
+  const res = await api('/dashboard/api/accounts', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(data)
   });
+  if (res && res.error) {
+    alert(res.error);
+  }
 });
 
 loadBots();

@@ -32,6 +32,7 @@ Login at `http://localhost:5000/login` with **admin/admin**.
 ## Usage
 
 1. Create a group with a target channel and interval.
+   Group names must be unique; duplicate names will return an error.
 2. Add accounts pointing to that group. Each account may specify a messages file with text to send.
 3. Click **Start Scheduler** to begin automated sending. Bots run in batches and reconnect on failure.
 4. Use the command button next to a bot to send manual messages or request a screenshot.

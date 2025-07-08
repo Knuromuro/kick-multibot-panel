@@ -9,6 +9,7 @@ from threading import Thread
 from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.executors.pool import ThreadPoolExecutor
 import websockets
@@ -73,7 +74,11 @@ def api_groups():
         data = request.json
         g = Group(name=data['name'], target=data['target'], interval=data['interval'])
         db.session.add(g)
-        db.session.commit()
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            return jsonify({'error': 'group name must be unique'}), 400
         return jsonify({'id': g.id})
     return jsonify([{ 'id': g.id, 'name': g.name, 'target': g.target, 'interval': g.interval } for g in Group.query.all()])
 
@@ -90,7 +95,11 @@ def api_accounts():
             group_id=data['group_id'],
         )
         db.session.add(acc)
-        db.session.commit()
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            return jsonify({'error': 'could not create account'}), 400
         return jsonify({'id': acc.id})
     return jsonify([{ 'id': a.id, 'username': a.username, 'group_id': a.group_id } for a in Account.query.all()])
 
