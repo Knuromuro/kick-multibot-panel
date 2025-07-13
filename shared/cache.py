@@ -11,7 +11,8 @@ def init_cache(app: Flask | None = None):
         'CACHE_REDIS_URL': os.getenv('REDIS_URL', 'redis://localhost:6379/0'),
     }
     if app:
-        app.config.update(config)
+        for key, value in config.items():
+            app.config.setdefault(key, value)
         cache.init_app(app)
     else:
         dummy = Flask('cache')

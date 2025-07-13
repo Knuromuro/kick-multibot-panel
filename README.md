@@ -15,7 +15,14 @@ Install dependencies and start the server:
 
 ```bash
 pip install -r requirements.txt
+# start both the API and dashboard
 python run.py
+```
+
+During development you can also run the backend module directly:
+
+```bash
+python backend/app.py
 ```
 
 Login at `http://localhost:5000/login` with **admin/admin**.

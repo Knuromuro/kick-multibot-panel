@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
   <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
 </head>
-<body class="p-4">
+<body class="p-4 container mx-auto">
   {% with messages = get_flashed_messages() %}
     {% if messages %}
       <ul class="mb-4">
