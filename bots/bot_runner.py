@@ -1,12 +1,13 @@
 import argparse
 import json
-import time
 from pathlib import Path
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import time
 from threading import Lock
 
 from shared.logger import logger
@@ -27,6 +28,7 @@ def load_config():
 
 _pool: list[webdriver.Chrome] = []
 _lock = Lock()
+BASE_URL = "https://kick.com"
 
 
 def init_driver(proxy: str | None = None):
@@ -52,16 +54,53 @@ def release_driver(driver: webdriver.Chrome) -> None:
         _pool.append(driver)
 
 
+def login(driver: webdriver.Chrome, email: str, password: str) -> None:
+    """Perform Kick.com login with retries."""
+    for attempt in range(3):
+        try:
+            driver.get(BASE_URL)
+            wait = WebDriverWait(driver, 5)
+            login_btn = wait.until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "#login-button, button.login"))
+            )
+            login_btn.click()
+
+            email_el = wait.until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "input#email"))
+            )
+            pwd_el = wait.until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "input#password"))
+            )
+            submit_btn = wait.until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "#submit-button"))
+            )
+
+            email_el.clear()
+            email_el.send_keys(email)
+            pwd_el.clear()
+            pwd_el.send_keys(password)
+            submit_btn.click()
+
+            try:
+                accept = WebDriverWait(driver, 5).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "#accept-cookies"))
+                )
+                accept.click()
+            except Exception:
+                pass
+            logger.info("login successful for %s", email)
+            return
+        except Exception as exc:
+            logger.warning("login attempt %s failed for %s: %s", attempt + 1, email, exc)
+            time.sleep(2)
+    raise RuntimeError("login failed for %s" % email)
+
+
 def run_account(account: dict):
     driver = get_driver(account.get('proxy'))
     try:
         logger.info('Logging in %s', account['email'])
-        driver.get('https://kick.com/login')
-        time.sleep(2)
-        driver.find_element(By.NAME, 'email').send_keys(account['email'])
-        driver.find_element(By.NAME, 'password').send_keys(account['password'])
-        driver.find_element(By.NAME, 'password').send_keys(Keys.RETURN)
-        time.sleep(5)  # wait for login
+        login(driver, account['email'], account['password'])
 
         msg_file = Path('messages') / f"{account['id']}.txt"
         messages = []

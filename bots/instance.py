@@ -7,11 +7,15 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import time
 import websockets
 
 from shared.logger import get_bot_logger
 
 WS_URI = os.getenv("KICK_WS_URI", "wss://chat.kick.com/channel/{target}")
+BASE_URL = "https://kick.com"
 
 class BotInstance:
     """Represents a single Kick bot account."""
@@ -48,29 +52,45 @@ class BotInstance:
         if self.driver is None:
             self._init_driver()
         d = self.driver
-        d.get('https://kick.com/login')
-        try:
-            accept = d.find_element(By.CSS_SELECTOR, '[aria-label="Accept cookies"]')
-            accept.click()
-        except Exception:
-            pass
-        # try several selectors for username and password
-        def find_input(cands):
-            for c in cands:
-                els = d.find_elements(By.CSS_SELECTOR, c)
-                if els:
-                    return els[0]
-            return None
-        user = find_input(['input[name=emailOrUsername]', 'input[type=email]', 'input[placeholder*=mail]'])
-        pwd = find_input(['input[name=password]', 'input[type=password]'])
-        login_btn = find_input(['button[data-testid="login"]', 'button[type=submit]'])
-        if user and pwd:
-            user.send_keys(self.account.username)
-            pwd.send_keys(self.account.password)
-            if login_btn:
+        for attempt in range(3):
+            try:
+                d.get(BASE_URL)
+                wait = WebDriverWait(d, 5)
+                login_btn = wait.until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "#login-button, button.login"))
+                )
                 login_btn.click()
-            else:
-                pwd.send_keys(Keys.RETURN)
+
+                email_el = wait.until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "input#email"))
+                )
+                pwd_el = wait.until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "input#password"))
+                )
+                submit_btn = wait.until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "#submit-button"))
+                )
+
+                email_el.clear()
+                email_el.send_keys(self.account.username)
+                pwd_el.clear()
+                pwd_el.send_keys(self.account.password)
+                submit_btn.click()
+
+                try:
+                    accept = WebDriverWait(d, 5).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, "#accept-cookies"))
+                    )
+                    accept.click()
+                except Exception:
+                    pass
+                self.log.info("login successful")
+                return
+            except Exception as exc:
+                self.log.warning("login attempt %s failed: %s", attempt + 1, exc)
+                time.sleep(2)
+        self.log.error("login failed after retries")
+        raise RuntimeError("login failed")
 
     async def send_message(self, message: str):
         for attempt in range(2):
