@@ -10,3 +10,9 @@ prometheus_client
 Flask-SocketIO
 Flask-Caching
 psutil
+Flask-RESTX
+Flask-WTF
+Flask-Limiter
+Flask-Talisman
+Authlib
+psycopg2-binary

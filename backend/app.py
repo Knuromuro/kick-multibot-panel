@@ -14,9 +14,14 @@ import psutil
 import redis
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
-from flask import Blueprint, Flask, Response, jsonify, request, current_app
+from flask import Blueprint, Flask, Response, request, current_app
 from flask_sqlalchemy import SQLAlchemy
 from flask_socketio import SocketIO
+from flask_wtf import CSRFProtect
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_talisman import Talisman
+from flask_restx import Api, Resource
 from prometheus_client import Counter, Gauge, generate_latest
 from rq import Queue, Retry
 
@@ -29,6 +34,10 @@ from shared.logger import logger
 
 db = SQLAlchemy()
 socketio = SocketIO(cors_allowed_origins="*")
+csrf = CSRFProtect()
+limiter = Limiter(key_func=get_remote_address)
+talisman = Talisman()
+api = Api(doc="/docs")
 
 # Prometheus metrics
 runs_counter = Counter("bot_runs", "Number of bot executions")
@@ -96,17 +105,28 @@ def create_app(config: Optional[dict] = None) -> Flask:
         static_folder=str(base_dir.parent / "app" / "static"),
         template_folder=str(base_dir.parent / "app" / "templates"),
     )
+    db_uri = os.getenv("DATABASE_URL")
+    if not db_uri:
+        db_uri = f"sqlite:///{os.getenv('DB_PATH', 'bots.db')}"
     app.config.update(
         {
             "SECRET_KEY": os.getenv("SECRET_KEY", "change-me"),
-            "SQLALCHEMY_DATABASE_URI": f"sqlite:///{os.getenv('DB_PATH', 'bots.db')}",
+            "SQLALCHEMY_DATABASE_URI": db_uri,
             "SQLALCHEMY_TRACK_MODIFICATIONS": False,
         }
     )
     if config:
         app.config.update(config)
 
+    if os.getenv("TESTING"):
+        app.config["TESTING"] = True
+        app.config["WTF_CSRF_ENABLED"] = False
+
     init_cache(app)
+    csrf.init_app(app)
+    csrf.exempt(api_bp)
+    limiter.init_app(app)
+    talisman.init_app(app, force_https=not app.config.get("TESTING", False))
     db.init_app(app)
     socketio.init_app(app)
 
@@ -122,17 +142,28 @@ def create_app(config: Optional[dict] = None) -> Flask:
 # API blueprint ------------------------------------------------------------
 
 api_bp = Blueprint("api", __name__)
+ns = api.namespace("api", path="/dashboard/api")
 
 
-@api_bp.route("/dashboard/api/groups", methods=["GET", "POST"])
-def api_groups():
-    if request.method == "POST":
+@ns.route("/groups", methods=["GET", "POST"], endpoint="groups")
+class GroupResource(Resource):
+    def get(self):
+        groups = cache.get("groups")
+        if groups is None:
+            groups = [
+                {"id": g.id, "name": g.name, "target": g.target, "interval": g.interval}
+                for g in Group.query.all()
+            ]
+            cache.set("groups", groups, timeout=60)
+        return groups
+
+    def post(self):
         data = request.get_json(silent=True) or {}
         name = data.get("name")
         target = data.get("target")
         interval = data.get("interval", 600)
         if not name or not target:
-            return jsonify({"error": "missing name or target"}), 400
+            return {"error": "missing name or target"}, 400
         group = Group(name=name, target=target, interval=interval)
         db.session.add(group)
         try:
@@ -140,28 +171,29 @@ def api_groups():
         except Exception as exc:  # noqa: broad-except
             logger.warning("group creation failed: %s", exc)
             db.session.rollback()
-            return jsonify({"error": "group name must be unique"}), 400
-        return jsonify({"id": group.id}), 201
-
-    groups = cache.get("groups")
-    if groups is None:
-        groups = [
-            {"id": g.id, "name": g.name, "target": g.target, "interval": g.interval}
-            for g in Group.query.all()
-        ]
-        cache.set("groups", groups, timeout=60)
-    return jsonify(groups)
+            return {"error": "group name must be unique"}, 400
+        return {"id": group.id}, 201
 
 
-@api_bp.route("/dashboard/api/accounts", methods=["GET", "POST"])
-def api_accounts():
-    if request.method == "POST":
+@ns.route("/accounts", methods=["GET", "POST"], endpoint="accounts")
+class AccountResource(Resource):
+    def get(self):
+        accounts = cache.get("accounts")
+        if accounts is None:
+            accounts = [
+                {"id": a.id, "username": a.username, "group_id": a.group_id}
+                for a in Account.query.all()
+            ]
+            cache.set("accounts", accounts, timeout=60)
+        return accounts
+
+    def post(self):
         data = request.get_json(silent=True) or {}
         username = data.get("username")
         password = data.get("password")
         group_id = data.get("group_id")
         if not username or not password or not group_id:
-            return jsonify({"error": "missing fields"}), 400
+            return {"error": "missing fields"}, 400
         account = Account(
             username=username,
             password=password,
@@ -175,120 +207,118 @@ def api_accounts():
         except Exception as exc:  # noqa: broad-except
             logger.warning("account creation failed: %s", exc)
             db.session.rollback()
-            return jsonify({"error": "could not create account"}), 400
-        return jsonify({"id": account.id}), 201
-
-    accounts = cache.get("accounts")
-    if accounts is None:
-        accounts = [
-            {"id": a.id, "username": a.username, "group_id": a.group_id}
-            for a in Account.query.all()
-        ]
-        cache.set("accounts", accounts, timeout=60)
-    return jsonify(accounts)
+            return {"error": "could not create account"}, 400
+        return {"id": account.id}, 201
 
 
-@api_bp.route("/dashboard/api/scheduler/start", methods=["POST"])
-def api_start_scheduler():
-    if not sched.running:
-        sched.start()
-    schedule_all()
-    socketio.emit("status", {"message": "scheduler started"})
-    return jsonify({"status": "started"})
+@ns.route("/scheduler/start", methods=["POST"], endpoint="scheduler_start")
+class SchedulerStart(Resource):
+    def post(self):
+        if not sched.running:
+            sched.start()
+        schedule_all()
+        socketio.emit("status", {"message": "scheduler started"})
+        return {"status": "started"}
 
 
-@api_bp.route("/dashboard/api/bots", methods=["GET"])
-def api_list_bots():
-    result = []
-    for acc in Account.query.all():
-        status = "offline"
-        bot = bots.get(acc.id)
-        if bot and bot.ws and not bot.ws.closed:
-            status = "online"
-        result.append({"id": acc.id, "username": acc.username, "status": status})
-    return jsonify(result)
+@ns.route("/bots", methods=["GET"], endpoint="bot_list")
+class BotList(Resource):
+    def get(self):
+        result = []
+        for acc in Account.query.all():
+            status = "offline"
+            bot = bots.get(acc.id)
+            if bot and bot.ws and not bot.ws.closed:
+                status = "online"
+            result.append({"id": acc.id, "username": acc.username, "status": status})
+        return result
 
 
 # Bot process management ---------------------------------------------------
 
-@api_bp.route("/bots/<int:bot_id>/start", methods=["POST"])
-def start_bot(bot_id: int):
-    if bot_id in processes:
-        return jsonify({"status": "already running"})
+@ns.route("/bots/<int:bot_id>/start", methods=["POST"], endpoint="bot_start")
+class BotStart(Resource):
+    def post(self, bot_id: int):
+        if bot_id in processes:
+            return {"status": "already running"}
 
-    account = Account.query.get(bot_id)
-    if not account:
-        return jsonify({"error": "bot not found"}), 404
-    group = Group.query.get(account.group_id)
-    if not group:
-        return jsonify({"error": "group not found"}), 404
+        account = Account.query.get(bot_id)
+        if not account:
+            return {"error": "bot not found"}, 404
+        group = Group.query.get(account.group_id)
+        if not group:
+            return {"error": "group not found"}, 404
 
-    msg = "Hello from KickBot"
-    msg_path = Path(account.messages_file or "")
-    if msg_path.is_file():
-        msg = msg_path.read_text().splitlines()[0]
+        msg = "Hello from KickBot"
+        msg_path = Path(account.messages_file or "")
+        if msg_path.is_file():
+            msg = msg_path.read_text().splitlines()[0]
 
-    cmd = [
-        "python",
-        str(Path(__file__).resolve().parent.parent / "scripts" / "run_bot.py"),
-        "--channel",
-        group.target,
-        "--message",
-        msg,
-        "--interval",
-        str(group.interval),
-        "--token",
-        account.password,
-    ]
-    proc = subprocess.Popen(cmd)
-    processes[bot_id] = proc
-    running_gauge.inc()
-    socketio.emit("status", {"message": f"bot {bot_id} started"})
-    return jsonify({"pid": proc.pid})
-
-
-@api_bp.route("/bots/<int:bot_id>/stop", methods=["POST"])
-def stop_bot(bot_id: int):
-    proc = processes.get(bot_id)
-    if not proc:
-        return jsonify({"status": "not running"})
-    ps_process = psutil.Process(proc.pid)
-    ps_process.terminate()
-    proc.wait(timeout=5)
-    running_gauge.dec()
-    socketio.emit("status", {"message": f"bot {bot_id} stopped"})
-    processes.pop(bot_id, None)
-    return jsonify({"status": "stopped"})
+        cmd = [
+            "python",
+            str(Path(__file__).resolve().parent.parent / "scripts" / "run_bot.py"),
+            "--channel",
+            group.target,
+            "--message",
+            msg,
+            "--interval",
+            str(group.interval),
+            "--token",
+            account.password,
+        ]
+        proc = subprocess.Popen(cmd)
+        processes[bot_id] = proc
+        running_gauge.inc()
+        socketio.emit("status", {"message": f"bot {bot_id} started"})
+        return {"pid": proc.pid}
 
 
-@api_bp.route("/bots/<int:bot_id>/status", methods=["GET"])
-def bot_status(bot_id: int):
-    proc = processes.get(bot_id)
-    if not proc:
-        return jsonify({"running": False})
-    ps_process = psutil.Process(proc.pid)
-    info = {
-        "running": ps_process.is_running(),
-        "pid": proc.pid,
-        "cpu": ps_process.cpu_percent(interval=0.1),
-        "memory": ps_process.memory_info().rss,
-    }
-    return jsonify(info)
+@ns.route("/bots/<int:bot_id>/stop", methods=["POST"], endpoint="bot_stop")
+class BotStop(Resource):
+    def post(self, bot_id: int):
+        proc = processes.get(bot_id)
+        if not proc:
+            return {"status": "not running"}
+        ps_process = psutil.Process(proc.pid)
+        ps_process.terminate()
+        proc.wait(timeout=5)
+        running_gauge.dec()
+        socketio.emit("status", {"message": f"bot {bot_id} stopped"})
+        processes.pop(bot_id, None)
+        return {"status": "stopped"}
 
 
-@api_bp.route("/bots/<int:bot_id>/schedule", methods=["POST"])
-def schedule_bot(bot_id: int):
-    job = queue.enqueue(run_bot_task, bot_id, retry=Retry(max=3))
-    return jsonify({"job_id": job.id})
+@ns.route("/bots/<int:bot_id>/status", methods=["GET"], endpoint="bot_status")
+class BotStatus(Resource):
+    def get(self, bot_id: int):
+        proc = processes.get(bot_id)
+        if not proc:
+            return {"running": False}
+        ps_process = psutil.Process(proc.pid)
+        info = {
+            "running": ps_process.is_running(),
+            "pid": proc.pid,
+            "cpu": ps_process.cpu_percent(interval=0.1),
+            "memory": ps_process.memory_info().rss,
+        }
+        return info
 
 
-@api_bp.route("/dashboard/api/bots/<int:bid>/command", methods=["POST"])
-def api_bot_command(bid: int):
-    cmd = (request.json or {}).get("cmd")
-    args = (request.json or {}).get("args", {})
-    bot = bots.get(bid)
-    if not bot:
-        return jsonify({"error": "bot not running"}), 404
+@ns.route("/bots/<int:bot_id>/schedule", methods=["POST"], endpoint="bot_schedule")
+class BotSchedule(Resource):
+    def post(self, bot_id: int):
+        job = queue.enqueue(run_bot_task, bot_id, retry=Retry(max=3))
+        return {"job_id": job.id}
+
+
+@ns.route("/bots/<int:bid>/command", methods=["POST"], endpoint="bot_command")
+class BotCommand(Resource):
+    def post(self, bid: int):
+        cmd = (request.json or {}).get("cmd")
+        args = (request.json or {}).get("args", {})
+        bot = bots.get(bid)
+        if not bot:
+            return {"error": "bot not running"}, 404
 
     async def run_command():
         if cmd == "send_message":
@@ -300,18 +330,19 @@ def api_bot_command(bid: int):
         elif cmd == "screenshot":
             bot.screenshot()
 
-    fut = asyncio.run_coroutine_threadsafe(run_command(), aio_loop)
-    fut.result()
-    return jsonify({"status": "ok"})
+        fut = asyncio.run_coroutine_threadsafe(run_command(), aio_loop)
+        fut.result()
+        return {"status": "ok"}
 
 
-@api_bp.route("/dashboard/api/bots/<int:bid>/logs", methods=["GET"])
-def api_bot_logs(bid: int):
-    path = Path("logs") / f"bot_{bid}.log"
-    if not path.exists():
-        return jsonify([])
-    lines = path.read_text().splitlines()[-50:]
-    return jsonify(lines)
+@ns.route("/bots/<int:bid>/logs", methods=["GET"], endpoint="bot_logs")
+class BotLogs(Resource):
+    def get(self, bid: int):
+        path = Path("logs") / f"bot_{bid}.log"
+        if not path.exists():
+            return []
+        lines = path.read_text().splitlines()[-50:]
+        return lines
 
 
 @api_bp.route("/metrics")
@@ -401,5 +432,6 @@ async def send_job(account_id: int) -> None:
 
 
 def register_api(app: Flask) -> None:
+    api.init_app(app)
     app.register_blueprint(api_bp)
 

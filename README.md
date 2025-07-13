@@ -19,6 +19,18 @@ pip install -r requirements.txt
 python run.py
 ```
 
+### Docker
+
+Run with PostgreSQL and Redis using Docker Compose:
+
+```bash
+docker-compose up --build
+```
+
+### Documentation
+
+The API exposes OpenAPI docs at `/docs`. Developer documentation can be served with `mkdocs serve`.
+
 During development you can also run the backend module directly:
 
 ```bash
