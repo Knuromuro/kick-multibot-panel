@@ -1,4 +1,7 @@
+const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+
 async function api(url, opts = {}) {
+  opts.headers = Object.assign({}, opts.headers, {'X-CSRFToken': csrfToken});
   const res = await fetch(url, opts).catch(() => null);
   if (!res) return null;
   return res.json();

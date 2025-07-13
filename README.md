@@ -19,6 +19,9 @@ pip install -r requirements.txt
 python run.py
 ```
 
+The panel uses CSRF protection. A token is included in a `<meta>` tag and
+automatically sent with API requests by `main.js`.
+
 ### Docker
 
 Run with PostgreSQL and Redis using Docker Compose:
