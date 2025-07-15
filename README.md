@@ -58,6 +58,12 @@ Run with PostgreSQL and Redis using Docker Compose:
 docker-compose up --build
 ```
 
+For Kubernetes deployments a basic Helm chart is provided under `helm/kickbot`:
+
+```bash
+helm install kickbot helm/kickbot
+```
+
 ### Documentation
 
 The API exposes OpenAPI docs at `/docs`. Developer documentation can be served with `mkdocs serve`.
@@ -85,9 +91,14 @@ important variables are:
 - `REDIS_URL` – Redis connection string for task queue and caching
 - `JWT_SECRET_KEY` – secret used to sign access tokens
 - `TOTP_SECRET` – base32 secret for two factor login
+- `SENTRY_DSN` – optional Sentry endpoint for error reporting
+- `SLACK_WEBHOOK` – webhook URL for Slack alerts
+- `TELEGRAM_TOKEN` and `TELEGRAM_CHAT_ID` – credentials for Telegram alerts
 
 The backend exposes Prometheus metrics at `/metrics` and uses Redis + RQ for background jobs.
 It also provides `/sync/pull` and `/sync/push` for two-way event synchronization.
+Errors can optionally be reported to Sentry or Slack/Telegram via the environment
+variables `SENTRY_DSN`, `SLACK_WEBHOOK`, `TELEGRAM_TOKEN` and `TELEGRAM_CHAT_ID`.
 
 ## Usage
 

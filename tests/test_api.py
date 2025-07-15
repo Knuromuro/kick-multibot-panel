@@ -61,6 +61,18 @@ def test_stats_endpoint(client):
     assert "runs" in data and "errors" in data
 
 
+def test_metrics_and_auth(client):
+    res = client.post(
+        "/auth/token",
+        json={"username": "admin", "password": "admin", "totp": "123456"},
+    )
+    assert res.status_code == 200
+    token = res.get_json()["access_token"]
+    assert token
+    metrics = client.get("/metrics")
+    assert metrics.status_code == 200
+
+
 def test_bot_start_stop(client, tmp_path):
     gid = client.post(
         "/dashboard/api/groups", json={"name": "g3", "target": "t"}

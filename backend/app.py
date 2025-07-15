@@ -40,7 +40,7 @@ from app.routes import register_web
 from shared.config import load_config
 from bots.instance import BotInstance
 from shared.cache import cache, init_cache
-from shared.logger import logger
+from shared.logger import logger, init_logging, notify_webhook
 
 ANALYTICS_LOG = Path("analytics.log")
 
@@ -169,6 +169,10 @@ def create_app(config: Optional[dict] = None) -> Flask:
             "JWT_ACCESS_TOKEN_EXPIRES": timedelta(minutes=15),
             "JWT_REFRESH_TOKEN_EXPIRES": timedelta(days=1),
             "TOTP_SECRET": cfg.TOTP_SECRET,
+            "SENTRY_DSN": cfg.SENTRY_DSN,
+            "SLACK_WEBHOOK": cfg.SLACK_WEBHOOK,
+            "TELEGRAM_TOKEN": cfg.TELEGRAM_TOKEN,
+            "TELEGRAM_CHAT_ID": cfg.TELEGRAM_CHAT_ID,
         }
     )
     if config:
@@ -180,6 +184,7 @@ def create_app(config: Optional[dict] = None) -> Flask:
         app.config["WTF_CSRF_ENABLED"] = False
 
     init_cache(app)
+    init_logging(app.config.get("SENTRY_DSN"))
     csrf.init_app(app)
     csrf.exempt(api_bp)
     limiter.init_app(app)
@@ -670,6 +675,19 @@ def run_bot_task(bot_id: int) -> None:
     except Exception as exc:  # noqa: broad-except
         errors_counter.inc()
         logger.error("bot run failed: %s", exc)
+        webhook = cfg.SLACK_WEBHOOK
+        if webhook:
+            notify_webhook(webhook, f"Bot {bot_id} failed: {exc}")
+        if cfg.TELEGRAM_TOKEN and cfg.TELEGRAM_CHAT_ID:
+            url = f"https://api.telegram.org/bot{cfg.TELEGRAM_TOKEN}/sendMessage"
+            notify_webhook(
+                url,
+                "",
+                params={
+                    "chat_id": cfg.TELEGRAM_CHAT_ID,
+                    "text": f"Bot {bot_id} failed: {exc}",
+                },
+            )
         socketio.emit("bot_error", {"id": bot_id})
 
 
