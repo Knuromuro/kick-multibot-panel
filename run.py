@@ -86,7 +86,14 @@ def main() -> None:
     app = create_app()
     write_pid()
     try:
-        socketio.run(app, host=args.host, port=args.port, debug=debug, use_reloader=False)
+        socketio.run(
+            app,
+            host=args.host,
+            port=args.port,
+            debug=debug,
+            use_reloader=False,
+            allow_unsafe_werkzeug=True,
+        )
     finally:
         cleanup()
 

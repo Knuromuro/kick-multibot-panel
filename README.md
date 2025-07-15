@@ -19,6 +19,14 @@ pip install -r requirements.txt
 python run.py
 ```
 
+Run the tests (including a headless browser end-to-end check):
+
+```bash
+PYTHONPATH=. pytest -q
+```
+The end-to-end test uses Selenium with headless Chrome. Ensure `chromedriver`
+is installed and available on the system path when running tests.
+
 The panel uses CSRF protection. A token is included in a `<meta>` tag and
 automatically sent with API requests by `main.js`.
 Newly created groups and accounts now appear on the dashboard immediately.
