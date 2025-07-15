@@ -2,35 +2,62 @@
 {% block title %}Dashboard{% endblock %}
 {% block content %}
 <h1 class="text-xl mb-4">KickBot Manager</h1>
-<section class="mb-6">
-  <h2 class="font-bold">Groups</h2>
-  <form id="groupForm" method="post" class="space-y-2 mb-4">
+<div class="flex flex-col md:flex-row">
+  <aside class="md:w-1/4 p-2 bg-gray-50" id="sidebar">
+    <div class="flex justify-between items-center mb-2">
+      <span class="font-bold">Groups</span>
+      <button id="addGroupBtn" class="bg-green-600 text-white px-2 py-1 text-sm">Add</button>
+    </div>
+    <ul id="groupList" class="space-y-1"></ul>
+  </aside>
+  <main class="md:flex-1 p-2" id="mainArea">
+    <div class="flex justify-between items-center mb-2">
+      <span class="font-bold">Accounts</span>
+      <button id="addAccountBtn" class="bg-green-600 text-white px-2 py-1 text-sm">Add</button>
+    </div>
+    <table id="accountTable" class="w-full border-collapse mb-4"></table>
+    <section class="mb-4">
+      <h2 class="font-bold">Bots</h2>
+      <button onclick="startScheduler()" class="bg-blue-500 text-white px-2 py-1 mb-2">Start Scheduler</button>
+      <div id="bots" class="space-y-2"></div>
+    </section>
+    <section class="mb-4">
+      <canvas id="chart" height="150"></canvas>
+    </section>
+    <section class="mt-6">
+      <h2 class="font-bold">Logs</h2>
+      <pre id="logBox" class="bg-gray-100 p-2 h-64 overflow-auto"></pre>
+    </section>
+  </main>
+</div>
+
+<dialog id="groupModal">
+  <form id="groupForm" class="space-y-2">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    Name: <input id="g-name" name="name" class="border" required>
-    Target: <input id="g-target" name="target" class="border" required>
-    Interval: <input id="g-interval" name="interval" type="number" value="600" class="border" required>
-    <button class="bg-green-600 text-white px-2 py-1" type="submit">Create</button>
+    <input id="g-name" name="name" class="border w-full" placeholder="Name" required>
+    <input id="g-target" name="target" class="border w-full" placeholder="Target" required>
+    <input id="g-interval" name="interval" type="number" value="600" class="border w-full" required>
+    <div class="text-right space-x-2">
+      <button class="bg-blue-500 text-white px-3 py-1" type="submit">Save</button>
+      <button type="button" onclick="closeModal('groupModal')">Cancel</button>
+    </div>
   </form>
-  <table id="groupTable" class="w-full border-collapse"></table>
-</section>
-<section class="mb-6">
-  <h2 class="font-bold">Accounts</h2>
-  <form id="accountForm" method="post" class="space-y-2 mb-4">
+</dialog>
+
+<dialog id="accountModal">
+  <form id="accountForm" class="space-y-2">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    Username: <input id="a-user" name="username" class="border" required>
-    Password: <input id="a-pass" name="password" type="password" class="border" required>
-    Proxy: <input id="a-proxy" name="proxy" class="border">
-    Messages file: <input id="a-msg" name="messages_file" class="border">
-    Group ID: <input id="a-group" name="group_id" type="number" class="border" required>
-    <button class="bg-green-600 text-white px-2 py-1" type="submit">Create</button>
+    <input id="a-user" name="username" class="border w-full" placeholder="Username" required>
+    <input id="a-pass" name="password" type="password" class="border w-full" placeholder="Password" required>
+    <input id="a-proxy" name="proxy" class="border w-full" placeholder="Proxy">
+    <input id="a-msg" name="messages_file" class="border w-full" placeholder="Messages file">
+    <input id="a-group" name="group_id" type="number" class="border w-full" placeholder="Group ID" required>
+    <div class="text-right space-x-2">
+      <button class="bg-blue-500 text-white px-3 py-1" type="submit">Save</button>
+      <button type="button" onclick="closeModal('accountModal')">Cancel</button>
+    </div>
   </form>
-  <table id="accountTable" class="w-full border-collapse"></table>
-</section>
-<section>
-  <h2 class="font-bold">Bots</h2>
-  <button onclick="startScheduler()" class="bg-blue-500 text-white px-2 py-1 mb-2">Start Scheduler</button>
-  <div id="bots" class="space-y-2"></div>
-</section>
+</dialog>
 
 <dialog id="cmdDialog">
   <form id="cmdForm" class="space-y-2">
@@ -42,15 +69,14 @@
       <option value="screenshot">Screenshot</option>
     </select>
     Args: <input id="cmd-args" class="border" placeholder="message text">
-    <button class="bg-blue-500 text-white px-2 py-1" type="submit">Run</button>
-    <button type="button" onclick="closeCmd()">Cancel</button>
+    <div class="text-right space-x-2">
+      <button class="bg-blue-500 text-white px-3 py-1" type="submit">Run</button>
+      <button type="button" onclick="closeCmd()">Cancel</button>
+    </div>
   </form>
 </dialog>
 
-<section class="mt-6">
-  <h2 class="font-bold">Logs</h2>
-  <pre id="logBox" class="bg-gray-100 p-2 h-64 overflow-auto"></pre>
-</section>
+<div id="spinner" class="fixed inset-0 flex items-center justify-center bg-white bg-opacity-50 hidden">Loading...</div>
 
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script src="{{ url_for('static', filename='main.js') }}"></script>

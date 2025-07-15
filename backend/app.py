@@ -166,12 +166,11 @@ class GroupResource(Resource):
         if not name or not target:
             return {"error": "missing name or target"}, 400
         group = Group(name=name, target=target, interval=interval)
-        db.session.add(group)
         try:
-            db.session.commit()
+            with db.session.begin():
+                db.session.add(group)
         except Exception as exc:  # noqa: broad-except
             logger.warning("group creation failed: %s", exc)
-            db.session.rollback()
             return {"error": "group name must be unique"}, 400
         return {"id": group.id}, 201
 
@@ -202,12 +201,11 @@ class AccountResource(Resource):
             messages_file=data.get("messages_file"),
             group_id=group_id,
         )
-        db.session.add(account)
         try:
-            db.session.commit()
+            with db.session.begin():
+                db.session.add(account)
         except Exception as exc:  # noqa: broad-except
             logger.warning("account creation failed: %s", exc)
-            db.session.rollback()
             return {"error": "could not create account"}, 400
         return {"id": account.id}, 201
 
@@ -270,6 +268,7 @@ class BotStart(Resource):
         proc = subprocess.Popen(cmd)
         processes[bot_id] = proc
         running_gauge.inc()
+        socketio.emit("bot_started", {"id": bot_id})
         socketio.emit("status", {"message": f"bot {bot_id} started"})
         return {"pid": proc.pid}
 
@@ -284,6 +283,7 @@ class BotStop(Resource):
         ps_process.terminate()
         proc.wait(timeout=5)
         running_gauge.dec()
+        socketio.emit("bot_finished", {"id": bot_id})
         socketio.emit("status", {"message": f"bot {bot_id} stopped"})
         processes.pop(bot_id, None)
         return {"status": "stopped"}
@@ -351,6 +351,15 @@ def metrics():
     return Response(data, mimetype="text/plain")
 
 
+@api_bp.route("/dashboard/api/stats")
+def stats():
+    """Return simple counter stats for charts."""
+    return {
+        "runs": runs_counter._value.get(),
+        "errors": errors_counter._value.get(),
+    }
+
+
 # Utility functions --------------------------------------------------------
 
 def run_bot_task(bot_id: int) -> None:
@@ -382,9 +391,11 @@ def run_bot_task(bot_id: int) -> None:
     runs_counter.inc()
     try:
         subprocess.run(cmd, check=True)
+        socketio.emit("bot_finished", {"id": bot_id})
     except Exception as exc:  # noqa: broad-except
         errors_counter.inc()
         logger.error("bot run failed: %s", exc)
+        socketio.emit("bot_error", {"id": bot_id})
 
 
 def schedule_all() -> None:
@@ -423,7 +434,14 @@ async def send_job(account_id: int) -> None:
             line = fh.readline().strip()
             if line:
                 message = line
-    await bot.send_message(message)
+    socketio.emit("bot_started", {"id": account_id})
+    try:
+        await bot.send_message(message)
+        socketio.emit("bot_finished", {"id": account_id})
+    except Exception as exc:  # noqa: broad-except
+        errors_counter.inc()
+        logger.error("send job failed: %s", exc)
+        socketio.emit("bot_error", {"id": account_id})
     with current_app.app_context():
         log = Log(account_id=account_id, message=message)
         db.session.add(log)

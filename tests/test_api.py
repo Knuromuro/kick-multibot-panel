@@ -51,3 +51,10 @@ def test_create_account(client):
     res = client.get('/dashboard/api/accounts')
     assert any(a['id'] == aid for a in res.get_json())
 
+
+def test_stats_endpoint(client):
+    res = client.get('/dashboard/api/stats')
+    assert res.status_code == 200
+    data = res.get_json()
+    assert 'runs' in data and 'errors' in data
+

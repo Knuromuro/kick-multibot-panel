@@ -1,35 +1,32 @@
 const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+const spinner = document.getElementById('spinner');
+let chart;
+
+function showSpinner() { spinner.classList.remove('hidden'); }
+function hideSpinner() { spinner.classList.add('hidden'); }
 
 async function api(url, opts = {}) {
   opts.headers = Object.assign({}, opts.headers, {'X-CSRFToken': csrfToken});
+  showSpinner();
   const res = await fetch(url, opts).catch(() => null);
+  hideSpinner();
   if (!res) return null;
   return res.json();
 }
 
-async function loadBots() {
-  const bots = await api('/dashboard/api/bots');
-  if (!bots) return;
-  const container = document.getElementById('bots');
-  container.innerHTML = '';
-  bots.forEach(b => {
-    const div = document.createElement('div');
-    div.className = 'border p-2';
-    div.innerHTML = `ID ${b.id} (${b.username}) - ${b.status} ` +
-      `<button onclick="openCmd(${b.id})" class="bg-blue-500 text-white px-1">Cmd</button>`;
-    container.appendChild(div);
-  });
-}
+function openModal(id) { document.getElementById(id).showModal(); }
+function closeModal(id) { document.getElementById(id).close(); }
+function closeCmd() { document.getElementById('cmdDialog').close(); }
 
 async function loadGroups() {
   const groups = await api('/dashboard/api/groups');
   if (!groups) return;
-  const table = document.getElementById('groupTable');
-  table.innerHTML = '<tr><th>ID</th><th>Name</th><th>Target</th><th>Interval</th></tr>';
+  const list = document.getElementById('groupList');
+  list.innerHTML = '';
   groups.forEach(g => {
-    const row = document.createElement('tr');
-    row.innerHTML = `<td class="border px-2">${g.id}</td><td class="border px-2">${g.name}</td><td class="border px-2">${g.target}</td><td class="border px-2">${g.interval}</td>`;
-    table.appendChild(row);
+    const li = document.createElement('li');
+    li.textContent = `${g.name} (${g.target})`;
+    list.appendChild(li);
   });
 }
 
@@ -45,17 +42,40 @@ async function loadAccounts() {
   });
 }
 
+async function loadBots() {
+  const bots = await api('/dashboard/api/bots');
+  if (!bots) return;
+  const container = document.getElementById('bots');
+  container.innerHTML = '';
+  bots.forEach(b => {
+    const div = document.createElement('div');
+    let color = 'bg-red-200';
+    if (b.status === 'online') color = 'bg-green-200';
+    else if (b.status === 'queued') color = 'bg-yellow-200';
+    div.className = `${color} p-2`;
+    div.innerHTML = `ID ${b.id} (${b.username}) - ${b.status} <button onclick="openCmd(${b.id})" class="bg-blue-500 text-white px-1">Cmd</button> <button onclick="fetchLogs(${b.id})" class="text-sm underline">Logs</button>`;
+    container.appendChild(div);
+  });
+}
+
+async function refreshStats() {
+  const stats = await api('/dashboard/api/stats');
+  if (!stats) return;
+  if (!chart) {
+    const ctx = document.getElementById('chart');
+    chart = new Chart(ctx, {
+      type: 'bar',
+      data: { labels: ['Runs', 'Errors'], datasets: [{ data: [stats.runs, stats.errors], backgroundColor: ['#4ade80','#f87171'] }] },
+      options: { plugins: { legend: { display: false } } }
+    });
+  } else {
+    chart.data.datasets[0].data = [stats.runs, stats.errors];
+    chart.update();
+  }
+}
+
 async function startScheduler() {
   await api('/dashboard/api/scheduler/start', {method: 'POST'});
-}
-
-function openCmd(id) {
-  document.getElementById('cmd-id').value = id;
-  document.getElementById('cmdDialog').showModal();
-}
-
-function closeCmd() {
-  document.getElementById('cmdDialog').close();
 }
 
 async function fetchLogs(id) {
@@ -64,23 +84,8 @@ async function fetchLogs(id) {
   document.getElementById('logBox').textContent = logs.join('\n');
 }
 
-// Forms
-
-document.getElementById('cmdForm').addEventListener('submit', async e => {
-  e.preventDefault();
-  const id = document.getElementById('cmd-id').value;
-  const cmd = document.getElementById('cmd-type').value;
-  const args = document.getElementById('cmd-args').value;
-  await api(`/dashboard/api/bots/${id}/command`, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({cmd: cmd, args: {message: args}})
-  });
-  closeCmd();
-  fetchLogs(id);
-});
-
-// TODO: simple forms for groups and accounts (not fully implemented)
+document.getElementById('addGroupBtn').addEventListener('click', () => openModal('groupModal'));
+document.getElementById('addAccountBtn').addEventListener('click', () => openModal('accountModal'));
 
 document.getElementById('groupForm').addEventListener('submit', async e => {
   e.preventDefault();
@@ -94,12 +99,7 @@ document.getElementById('groupForm').addEventListener('submit', async e => {
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(data)
   });
-  if (res && res.error) {
-    alert(res.error);
-  } else {
-    loadGroups();
-    e.target.reset();
-  }
+  if (res && res.error) alert(res.error); else { loadGroups(); closeModal('groupModal'); }
 });
 
 document.getElementById('accountForm').addEventListener('submit', async e => {
@@ -116,28 +116,31 @@ document.getElementById('accountForm').addEventListener('submit', async e => {
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(data)
   });
-  if (res && res.error) {
-    alert(res.error);
-  } else {
-    loadAccounts();
-    e.target.reset();
-  }
+  if (res && res.error) alert(res.error); else { loadAccounts(); closeModal('accountModal'); }
 });
 
-if (Notification && Notification.permission !== 'granted') {
-  Notification.requestPermission();
-}
+document.getElementById('cmdForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const id = document.getElementById('cmd-id').value;
+  const cmd = document.getElementById('cmd-type').value;
+  const args = document.getElementById('cmd-args').value;
+  await api(`/dashboard/api/bots/${id}/command`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({cmd: cmd, args: {message: args}})
+  });
+  closeCmd();
+  fetchLogs(id);
+});
+
+if (Notification && Notification.permission !== 'granted') { Notification.requestPermission(); }
 
 const socket = io();
-socket.on('status', data => {
-  loadBots();
-  loadGroups();
-  loadAccounts();
-  if (data.message && Notification.permission === 'granted') {
-    new Notification(data.message);
-  }
+['bot_started','bot_finished','bot_error','status'].forEach(evt => {
+  socket.on(evt, () => { loadBots(); refreshStats(); });
 });
 
-loadBots();
 loadGroups();
 loadAccounts();
+loadBots();
+refreshStats();

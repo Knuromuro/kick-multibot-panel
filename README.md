@@ -74,3 +74,9 @@ The backend exposes Prometheus metrics at `/metrics` and uses Redis + RQ for bac
 Logs are stored under `logs/` with one file per bot.
 
 The dashboard is a Progressive Web App and can be installed on mobile. It uses WebSocket updates and push notifications when bots start or stop.
+
+### Mobile screenshots
+
+Below is an example of the mobile layout. The sidebar collapses into a hamburger menu and all controls remain accessible.
+
+![dashboard mobile](docs/index.md)

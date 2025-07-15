@@ -61,14 +61,16 @@ def test_e2e_flow(tmp_path):
         driver.find_element(By.NAME, 'password').send_keys('admin')
         driver.find_element(By.CSS_SELECTOR, 'button[type=submit]').click()
         assert '/dashboard' in driver.current_url
+        driver.find_element(By.ID, 'addGroupBtn').click()
         driver.find_element(By.ID, 'g-name').send_keys('g1')
         driver.find_element(By.ID, 'g-target').send_keys('chan')
         driver.find_element(By.ID, 'g-interval').clear()
         driver.find_element(By.ID, 'g-interval').send_keys('60')
         driver.find_element(By.CSS_SELECTOR, '#groupForm button').click()
         time.sleep(1)
-        table = driver.find_element(By.ID, 'groupTable')
+        table = driver.find_element(By.ID, 'groupList')
         assert 'g1' in table.text
+        driver.find_element(By.ID, 'addAccountBtn').click()
         driver.find_element(By.ID, 'a-user').send_keys('u')
         driver.find_element(By.ID, 'a-pass').send_keys('p')
         driver.find_element(By.ID, 'a-group').send_keys('1')
