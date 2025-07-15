@@ -31,6 +31,14 @@ The panel uses CSRF protection. A token is included in a `<meta>` tag and
 automatically sent with API requests by `main.js`.
 Newly created groups and accounts now appear on the dashboard immediately.
 
+### API endpoints
+
+- `POST /dashboard/api/groups` – create a group
+- `POST /dashboard/api/accounts` – create an account
+- `POST /dashboard/api/bots/<id>/start` – start a bot
+- `POST /dashboard/api/bots/<id>/stop` – stop a bot
+- `GET  /dashboard/api/bots/<id>/status` – check if a bot is running
+
 ### Docker
 
 Run with PostgreSQL and Redis using Docker Compose:

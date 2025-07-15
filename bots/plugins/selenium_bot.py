@@ -1,5 +1,6 @@
-from . import IBot, register
+from . import register
 from bots.instance import BotInstance
+
 
 class SeleniumAdapter:
     def __init__(self, instance: BotInstance):
@@ -13,6 +14,9 @@ class SeleniumAdapter:
             self.instance.ws.close()
 
     def status(self) -> str:
-        return "online" if self.instance.ws and not self.instance.ws.closed else "offline"
+        return (
+            "online" if self.instance.ws and not self.instance.ws.closed else "offline"
+        )
+
 
 register("selenium", SeleniumAdapter)

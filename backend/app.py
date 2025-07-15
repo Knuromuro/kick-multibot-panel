@@ -62,18 +62,19 @@ queue = Queue("bots", connection=redis_conn)
 
 # Database models ----------------------------------------------------------
 
+
 class Group(db.Model):
     __tablename__ = "groups"
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(80), unique=True, nullable=False)
-    target = db.Column(db.String(80), nullable=False)
+    name = db.Column(db.String(80), unique=True, nullable=False, index=True)
+    target = db.Column(db.String(80), nullable=False, index=True)
     interval = db.Column(db.Integer, default=600)
 
 
 class Account(db.Model):
     __tablename__ = "accounts"
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(120), nullable=False)
+    username = db.Column(db.String(120), nullable=False, index=True)
     password = db.Column(db.String(120), nullable=False)
     proxy = db.Column(db.String(200))
     messages_file = db.Column(db.String(200))
@@ -95,6 +96,7 @@ processes: Dict[int, subprocess.Popen] = {}
 
 
 # Application factory ------------------------------------------------------
+
 
 def create_app(config: Optional[dict] = None) -> Flask:
     """Create and configure the Flask application."""
@@ -235,6 +237,7 @@ class BotList(Resource):
 
 # Bot process management ---------------------------------------------------
 
+
 @ns.route("/bots/<int:bot_id>/start", methods=["POST"], endpoint="bot_start")
 class BotStart(Resource):
     def post(self, bot_id: int):
@@ -320,6 +323,7 @@ class BotCommand(Resource):
         bot = bots.get(bid)
         if not bot:
             return {"error": "bot not running"}, 404
+
         async def run_command():
             if cmd == "send_message":
                 await bot.send_message(args.get("message", ""))
@@ -361,6 +365,7 @@ def stats():
 
 
 # Utility functions --------------------------------------------------------
+
 
 def run_bot_task(bot_id: int) -> None:
     """Run a bot via subprocess for the job queue."""
@@ -452,4 +457,3 @@ async def send_job(account_id: int) -> None:
 def register_api(app: Flask) -> None:
     api.init_app(app)
     app.register_blueprint(api_bp)
-
