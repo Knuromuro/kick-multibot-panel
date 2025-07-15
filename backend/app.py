@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from threading import Thread
 from typing import Dict, Optional
+from uuid import uuid4
 from functools import wraps
 
 import psutil
@@ -103,10 +104,46 @@ class Log(db.Model):
     message = db.Column(db.String(200))
 
 
+class SyncEvent(db.Model):
+    """Event used for synchronizing state between clients."""
+
+    __tablename__ = "sync_events"
+
+    id = db.Column(db.Integer, primary_key=True)
+    event_id = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    entity = db.Column(db.String(50), nullable=False)
+    action = db.Column(db.String(50), nullable=False)
+    payload = db.Column(db.JSON)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    synced = db.Column(db.Boolean, default=False)
+
+
 # Bot and process storage --------------------------------------------------
 
 bots: Dict[int, BotInstance] = {}
 processes: Dict[int, subprocess.Popen] = {}
+
+
+def log_sync_event(entity: str, action: str, payload: dict) -> None:
+    """Store a sync event and emit it over WebSocket."""
+    evt = SyncEvent(
+        event_id=str(uuid4()),
+        entity=entity,
+        action=action,
+        payload=payload,
+    )
+    db.session.add(evt)
+    db.session.commit()
+    socketio.emit(
+        "sync_event",
+        {
+            "event_id": evt.event_id,
+            "entity": evt.entity,
+            "action": evt.action,
+            "payload": evt.payload,
+            "timestamp": evt.timestamp.isoformat(),
+        },
+    )
 
 
 # Application factory ------------------------------------------------------
@@ -161,6 +198,16 @@ def create_app(config: Optional[dict] = None) -> Flask:
     jwt.init_app(app)
     db.init_app(app)
     socketio.init_app(app)
+
+    if not sched.running:
+        sched.add_job(
+            lambda: queue.enqueue(process_unsent_events),
+            "interval",
+            minutes=1,
+            id="sync_sender",
+            replace_existing=True,
+        )
+        sched.start()
 
     @app.before_request
     def log_request() -> None:
@@ -279,6 +326,16 @@ class GroupResource(Resource):
         try:
             with db.session.begin():
                 db.session.add(group)
+            log_sync_event(
+                "group",
+                "create",
+                {
+                    "id": group.id,
+                    "name": group.name,
+                    "target": group.target,
+                    "interval": group.interval,
+                },
+            )
         except Exception as exc:  # noqa: broad-except
             logger.warning("group creation failed: %s", exc)
             return {"error": "group name must be unique"}, 400
@@ -327,6 +384,15 @@ class AccountResource(Resource):
         try:
             with db.session.begin():
                 db.session.add(account)
+            log_sync_event(
+                "account",
+                "create",
+                {
+                    "id": account.id,
+                    "username": account.username,
+                    "group_id": account.group_id,
+                },
+            )
         except Exception as exc:  # noqa: broad-except
             logger.warning("account creation failed: %s", exc)
             return {"error": "could not create account"}, 400
@@ -406,6 +472,7 @@ class BotStart(Resource):
         running_gauge.inc()
         socketio.emit("bot_started", {"id": bot_id})
         socketio.emit("status", {"message": f"bot {bot_id} started"})
+        log_sync_event("bot", "start", {"id": bot_id})
         return {"pid": proc.pid}
 
 
@@ -423,6 +490,7 @@ class BotStop(Resource):
         running_gauge.dec()
         socketio.emit("bot_finished", {"id": bot_id})
         socketio.emit("status", {"message": f"bot {bot_id} stopped"})
+        log_sync_event("bot", "stop", {"id": bot_id})
         processes.pop(bot_id, None)
         return {"status": "stopped"}
 
@@ -505,6 +573,67 @@ def stats():
         "runs": runs_counter._value.get(),
         "errors": errors_counter._value.get(),
     }
+
+
+@api_bp.route("/sync/pull", methods=["GET"])
+@jwt_required(optional=True)
+def sync_pull():
+    events = SyncEvent.query.filter_by(synced=False).all()
+    data = [
+        {
+            "event_id": e.event_id,
+            "entity": e.entity,
+            "action": e.action,
+            "payload": e.payload,
+            "timestamp": e.timestamp.isoformat(),
+        }
+        for e in events
+    ]
+    for e in events:
+        e.synced = True
+    db.session.commit()
+    return {"events": data}
+
+
+@api_bp.route("/sync/push", methods=["POST"])
+@jwt_required(optional=True)
+def sync_push():
+    items = request.get_json(silent=True) or []
+    processed = []
+    for item in items:
+        event_id = item.get("event_id") or str(uuid4())
+        if SyncEvent.query.filter_by(event_id=event_id).first():
+            continue
+        evt = SyncEvent(
+            event_id=event_id,
+            entity=item.get("entity", ""),
+            action=item.get("action", ""),
+            payload=item.get("payload"),
+            timestamp=(
+                datetime.fromisoformat(item.get("timestamp"))
+                if item.get("timestamp")
+                else datetime.utcnow()
+            ),
+            synced=True,
+        )
+        db.session.add(evt)
+        processed.append(event_id)
+        # apply simple changes
+        if evt.entity == "group" and evt.action == "create":
+            name = evt.payload.get("name")
+            if name and not Group.query.filter_by(name=name).first():
+                db.session.add(
+                    Group(
+                        name=name,
+                        target=evt.payload.get("target", ""),
+                        interval=evt.payload.get("interval", 600),
+                    )
+                )
+        elif evt.entity == "bot" and evt.action == "start":
+            # only log event; actual starting handled elsewhere
+            pass
+    db.session.commit()
+    return {"processed": processed}
 
 
 # Utility functions --------------------------------------------------------
@@ -595,6 +724,26 @@ async def send_job(account_id: int) -> None:
         db.session.add(log)
         db.session.commit()
     socketio.emit("status", {"message": f"sent message for {account_id}"})
+
+
+def process_unsent_events() -> None:
+    """Emit unsent sync events via WebSocket and mark them synced."""
+    app = create_app()
+    with app.app_context():
+        events = SyncEvent.query.filter_by(synced=False).all()
+        for evt in events:
+            socketio.emit(
+                "sync_event",
+                {
+                    "event_id": evt.event_id,
+                    "entity": evt.entity,
+                    "action": evt.action,
+                    "payload": evt.payload,
+                    "timestamp": evt.timestamp.isoformat(),
+                },
+            )
+            evt.synced = True
+        db.session.commit()
 
 
 def register_api(app: Flask) -> None:

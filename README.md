@@ -84,6 +84,7 @@ set, provide the current one-time password.
 - `TOTP_SECRET` – base32 secret for two factor login
 
 The backend exposes Prometheus metrics at `/metrics` and uses Redis + RQ for background jobs.
+It also provides `/sync/pull` and `/sync/push` for two-way event synchronization.
 
 ## Usage
 
@@ -95,7 +96,7 @@ The backend exposes Prometheus metrics at `/metrics` and uses Redis + RQ for bac
 
 Logs are stored under `logs/` with one file per bot.
 
-The dashboard is a Progressive Web App and can be installed on mobile. It uses WebSocket updates and push notifications when bots start or stop.
+The dashboard is a Progressive Web App and can be installed on mobile. It uses WebSocket updates and push notifications when bots start or stop. Offline changes are queued locally and synchronized once connectivity returns.
 
 ### Mobile screenshots
 

@@ -2,6 +2,14 @@ const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
 const spinner = document.getElementById('spinner');
 let chart;
 
+function loadQueue() {
+  return JSON.parse(localStorage.getItem('syncQueue') || '[]');
+}
+
+function saveQueue(q) {
+  localStorage.setItem('syncQueue', JSON.stringify(q));
+}
+
 function showSpinner() { spinner.classList.remove('hidden'); }
 function hideSpinner() { spinner.classList.add('hidden'); }
 
@@ -17,6 +25,28 @@ async function api(url, opts = {}) {
 function openModal(id) { document.getElementById(id).showModal(); }
 function closeModal(id) { document.getElementById(id).close(); }
 function closeCmd() { document.getElementById('cmdDialog').close(); }
+
+async function syncPull() {
+  const res = await api('/sync/pull');
+  if (!res) return;
+  res.events.forEach(evt => {
+    if (evt.entity === 'group') loadGroups();
+    if (evt.entity === 'account') loadAccounts();
+    if (evt.entity === 'bot') loadBots();
+  });
+}
+
+async function syncPush() {
+  if (!navigator.onLine) return;
+  const queue = loadQueue();
+  if (queue.length === 0) return;
+  const res = await api('/sync/push', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(queue)
+  });
+  if (res) saveQueue([]);
+}
 
 async function loadGroups() {
   const q = document.getElementById('groupSearch').value;
@@ -111,7 +141,18 @@ document.getElementById('groupForm').addEventListener('submit', async e => {
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(data)
   });
-  if (res && res.error) alert(res.error); else { loadGroups(); closeModal('groupModal'); }
+  if (!res) {
+    const q = loadQueue();
+    q.push({entity: 'group', action: 'create', payload: data, timestamp: new Date().toISOString()});
+    saveQueue(q);
+    alert('Queued offline');
+  } else if (res.error) {
+    alert(res.error);
+  } else {
+    loadGroups();
+    closeModal('groupModal');
+    syncPush();
+  }
 });
 
 document.getElementById('accountForm').addEventListener('submit', async e => {
@@ -128,7 +169,18 @@ document.getElementById('accountForm').addEventListener('submit', async e => {
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(data)
   });
-  if (res && res.error) alert(res.error); else { loadAccounts(); closeModal('accountModal'); }
+  if (!res) {
+    const q = loadQueue();
+    q.push({entity: 'account', action: 'create', payload: data, timestamp: new Date().toISOString()});
+    saveQueue(q);
+    alert('Queued offline');
+  } else if (res.error) {
+    alert(res.error);
+  } else {
+    loadAccounts();
+    closeModal('accountModal');
+    syncPush();
+  }
 });
 
 document.getElementById('cmdForm').addEventListener('submit', async e => {
@@ -136,13 +188,21 @@ document.getElementById('cmdForm').addEventListener('submit', async e => {
   const id = document.getElementById('cmd-id').value;
   const cmd = document.getElementById('cmd-type').value;
   const args = document.getElementById('cmd-args').value;
-  await api(`/dashboard/api/bots/${id}/command`, {
+  const payload = {cmd: cmd, args: {message: args}};
+  const res = await api(`/dashboard/api/bots/${id}/command`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({cmd: cmd, args: {message: args}})
+    body: JSON.stringify(payload)
   });
+  if (!res) {
+    const q = loadQueue();
+    q.push({entity: 'bot', action: cmd, payload: {id: id, args: args}, timestamp: new Date().toISOString()});
+    saveQueue(q);
+    alert('Queued offline');
+  }
   closeCmd();
   fetchLogs(id);
+  syncPush();
 });
 
 if (Notification && Notification.permission !== 'granted') { Notification.requestPermission(); }
@@ -151,11 +211,15 @@ const socket = io();
 ['bot_started','bot_finished','bot_error','status'].forEach(evt => {
   socket.on(evt, () => { loadBots(); refreshStats(); });
 });
+socket.on('sync_event', syncPull);
+socket.on('connect', () => { syncPull(); syncPush(); });
 
 loadGroups();
 loadAccounts();
 loadBots();
 refreshStats();
+syncPull();
+syncPush();
 
 window.addEventListener('load', () => {
   if (!navigator.onLine) document.getElementById('offlineBanner').classList.remove('hidden');
