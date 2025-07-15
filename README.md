@@ -21,6 +21,7 @@ python run.py
 
 The panel uses CSRF protection. A token is included in a `<meta>` tag and
 automatically sent with API requests by `main.js`.
+Newly created groups and accounts now appear on the dashboard immediately.
 
 ### Docker
 

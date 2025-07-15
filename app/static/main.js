@@ -21,6 +21,30 @@ async function loadBots() {
   });
 }
 
+async function loadGroups() {
+  const groups = await api('/dashboard/api/groups');
+  if (!groups) return;
+  const table = document.getElementById('groupTable');
+  table.innerHTML = '<tr><th>ID</th><th>Name</th><th>Target</th><th>Interval</th></tr>';
+  groups.forEach(g => {
+    const row = document.createElement('tr');
+    row.innerHTML = `<td class="border px-2">${g.id}</td><td class="border px-2">${g.name}</td><td class="border px-2">${g.target}</td><td class="border px-2">${g.interval}</td>`;
+    table.appendChild(row);
+  });
+}
+
+async function loadAccounts() {
+  const accs = await api('/dashboard/api/accounts');
+  if (!accs) return;
+  const table = document.getElementById('accountTable');
+  table.innerHTML = '<tr><th>ID</th><th>User</th><th>Group</th></tr>';
+  accs.forEach(a => {
+    const row = document.createElement('tr');
+    row.innerHTML = `<td class="border px-2">${a.id}</td><td class="border px-2">${a.username}</td><td class="border px-2">${a.group_id}</td>`;
+    table.appendChild(row);
+  });
+}
+
 async function startScheduler() {
   await api('/dashboard/api/scheduler/start', {method: 'POST'});
 }
@@ -72,6 +96,9 @@ document.getElementById('groupForm').addEventListener('submit', async e => {
   });
   if (res && res.error) {
     alert(res.error);
+  } else {
+    loadGroups();
+    e.target.reset();
   }
 });
 
@@ -91,6 +118,9 @@ document.getElementById('accountForm').addEventListener('submit', async e => {
   });
   if (res && res.error) {
     alert(res.error);
+  } else {
+    loadAccounts();
+    e.target.reset();
   }
 });
 
@@ -101,9 +131,13 @@ if (Notification && Notification.permission !== 'granted') {
 const socket = io();
 socket.on('status', data => {
   loadBots();
+  loadGroups();
+  loadAccounts();
   if (data.message && Notification.permission === 'granted') {
     new Notification(data.message);
   }
 });
 
 loadBots();
+loadGroups();
+loadAccounts();

@@ -118,7 +118,8 @@ def create_app(config: Optional[dict] = None) -> Flask:
     if config:
         app.config.update(config)
 
-    if os.getenv("TESTING"):
+    testing = app.config.get("TESTING") or os.getenv("TESTING")
+    if testing:
         app.config["TESTING"] = True
         app.config["WTF_CSRF_ENABLED"] = False
 
@@ -319,20 +320,19 @@ class BotCommand(Resource):
         bot = bots.get(bid)
         if not bot:
             return {"error": "bot not running"}, 404
-
-    async def run_command():
-        if cmd == "send_message":
-            await bot.send_message(args.get("message", ""))
-        elif cmd == "status_check":
-            return await bot.status_check()
-        elif cmd == "restart":
-            await bot.restart()
-        elif cmd == "screenshot":
-            bot.screenshot()
+        async def run_command():
+            if cmd == "send_message":
+                await bot.send_message(args.get("message", ""))
+            elif cmd == "status_check":
+                return await bot.status_check()
+            elif cmd == "restart":
+                await bot.restart()
+            elif cmd == "screenshot":
+                bot.screenshot()
 
         fut = asyncio.run_coroutine_threadsafe(run_command(), aio_loop)
-        fut.result()
-        return {"status": "ok"}
+        result = fut.result()
+        return result or {"status": "ok"}
 
 
 @ns.route("/bots/<int:bid>/logs", methods=["GET"], endpoint="bot_logs")

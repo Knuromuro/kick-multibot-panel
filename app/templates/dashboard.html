@@ -4,22 +4,24 @@
 <h1 class="text-xl mb-4">KickBot Manager</h1>
 <section class="mb-6">
   <h2 class="font-bold">Groups</h2>
-  <form id="groupForm" class="space-y-2 mb-4">
-    Name: <input id="g-name" class="border" required>
-    Target: <input id="g-target" class="border" required>
-    Interval: <input id="g-interval" type="number" value="600" class="border" required>
+  <form id="groupForm" method="post" class="space-y-2 mb-4">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    Name: <input id="g-name" name="name" class="border" required>
+    Target: <input id="g-target" name="target" class="border" required>
+    Interval: <input id="g-interval" name="interval" type="number" value="600" class="border" required>
     <button class="bg-green-600 text-white px-2 py-1" type="submit">Create</button>
   </form>
   <table id="groupTable" class="w-full border-collapse"></table>
 </section>
 <section class="mb-6">
   <h2 class="font-bold">Accounts</h2>
-  <form id="accountForm" class="space-y-2 mb-4">
-    Username: <input id="a-user" class="border" required>
-    Password: <input id="a-pass" type="password" class="border" required>
-    Proxy: <input id="a-proxy" class="border">
-    Messages file: <input id="a-msg" class="border">
-    Group ID: <input id="a-group" type="number" class="border" required>
+  <form id="accountForm" method="post" class="space-y-2 mb-4">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    Username: <input id="a-user" name="username" class="border" required>
+    Password: <input id="a-pass" name="password" type="password" class="border" required>
+    Proxy: <input id="a-proxy" name="proxy" class="border">
+    Messages file: <input id="a-msg" name="messages_file" class="border">
+    Group ID: <input id="a-group" name="group_id" type="number" class="border" required>
     <button class="bg-green-600 text-white px-2 py-1" type="submit">Create</button>
   </form>
   <table id="accountTable" class="w-full border-collapse"></table>
