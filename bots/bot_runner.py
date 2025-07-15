@@ -13,16 +13,16 @@ from threading import Lock
 from shared.logger import logger
 from shared.cache import cache
 
-DATA_FILE = Path(__file__).resolve().parent.parent / 'data.json'
+DATA_FILE = Path(__file__).resolve().parent.parent / "data.json"
 
 
 def load_config():
-    cached = cache.get('config')
+    cached = cache.get("config")
     if cached:
         return cached
     with open(DATA_FILE) as f:
         data = json.load(f)
-    cache.set('config', data, timeout=60)
+    cache.set("config", data, timeout=60)
     return data
 
 
@@ -33,12 +33,12 @@ BASE_URL = "https://kick.com"
 
 def init_driver(proxy: str | None = None):
     opts = Options()
-    opts.add_argument('--headless')
-    opts.add_argument('--disable-gpu')
-    opts.add_argument('--disable-extensions')
-    opts.add_argument('--start-maximized')
+    opts.add_argument("--headless")
+    opts.add_argument("--disable-gpu")
+    opts.add_argument("--disable-extensions")
+    opts.add_argument("--start-maximized")
     if proxy:
-        opts.add_argument(f'--proxy-server={proxy}')
+        opts.add_argument(f"--proxy-server={proxy}")
     return webdriver.Chrome(options=opts)
 
 
@@ -61,7 +61,9 @@ def login(driver: webdriver.Chrome, email: str, password: str) -> None:
             driver.get(BASE_URL)
             wait = WebDriverWait(driver, 5)
             login_btn = wait.until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "#login-button, button.login"))
+                EC.element_to_be_clickable(
+                    (By.CSS_SELECTOR, "#login-button, button.login")
+                )
             )
             login_btn.click()
 
@@ -91,27 +93,29 @@ def login(driver: webdriver.Chrome, email: str, password: str) -> None:
             logger.info("login successful for %s", email)
             return
         except Exception as exc:
-            logger.warning("login attempt %s failed for %s: %s", attempt + 1, email, exc)
+            logger.warning(
+                "login attempt %s failed for %s: %s", attempt + 1, email, exc
+            )
             time.sleep(2)
     raise RuntimeError("login failed for %s" % email)
 
 
 def run_account(account: dict):
-    driver = get_driver(account.get('proxy'))
+    driver = get_driver(account.get("proxy"))
     try:
-        logger.info('Logging in %s', account['email'])
-        login(driver, account['email'], account['password'])
+        logger.info("Logging in %s", account["email"])
+        login(driver, account["email"], account["password"])
 
-        msg_file = Path('messages') / f"{account['id']}.txt"
+        msg_file = Path("messages") / f"{account['id']}.txt"
         messages = []
         if msg_file.exists():
             with open(msg_file) as f:
                 messages = [line.strip() for line in f if line.strip()]
         if not messages:
-            messages = ['Hello from KickBot']
+            messages = ["Hello from KickBot"]
 
         for msg in messages:
-            logger.info('Would send message for %s: %s', account['email'], msg)
+            logger.info("Would send message for %s: %s", account["email"], msg)
             # Placeholder for real message sending
             time.sleep(1)
     finally:
@@ -120,13 +124,13 @@ def run_account(account: dict):
 
 def main(group: str | None = None):
     config = load_config()
-    accounts = {acc['id']: acc for acc in config['accounts']}
+    accounts = {acc["id"]: acc for acc in config["accounts"]}
     account_ids = []
     if group:
-        grp = next((g for g in config['groups'] if g['name'] == group), None)
+        grp = next((g for g in config["groups"] if g["name"] == group), None)
         if not grp:
-            raise ValueError(f'Group {group} not found')
-        account_ids = grp['accounts']
+            raise ValueError(f"Group {group} not found")
+        account_ids = grp["accounts"]
     else:
         account_ids = list(accounts)
 
@@ -136,8 +140,8 @@ def main(group: str | None = None):
             run_account(acc)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--group', help='Group name to run')
+    parser.add_argument("--group", help="Group name to run")
     args = parser.parse_args()
     main(args.group)

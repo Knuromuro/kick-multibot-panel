@@ -3,7 +3,7 @@ from datetime import datetime
 
 import pytest
 
-from backend.app import create_app, db, Group, SyncEvent
+from backend.app import create_app, db, Group
 
 
 @pytest.fixture

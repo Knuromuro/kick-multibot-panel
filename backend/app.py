@@ -37,7 +37,7 @@ from prometheus_client import Counter, Gauge, generate_latest
 from rq import Queue, Retry
 
 from app.routes import register_web
-from dotenv import load_dotenv
+from shared.config import load_config
 from bots.instance import BotInstance
 from shared.cache import cache, init_cache
 from shared.logger import logger
@@ -60,8 +60,9 @@ errors_counter = Counter("bot_errors", "Number of bot errors")
 running_gauge = Gauge("bots_running", "Currently running bot processes")
 
 # Scheduler
-WORKERS = int(os.getenv("WORKERS", "50"))
-MAX_INSTANCES = int(os.getenv("MAX_INSTANCES", "50"))
+cfg = load_config()
+WORKERS = cfg.WORKERS
+MAX_INSTANCES = cfg.MAX_INSTANCES
 sched = BackgroundScheduler(
     executors={"default": ThreadPoolExecutor(max_workers=WORKERS)},
     job_defaults={"max_instances": MAX_INSTANCES},
@@ -72,7 +73,7 @@ _thread = Thread(target=lambda: aio_loop.run_forever(), daemon=True)
 _thread.start()
 
 # Redis queue
-redis_conn = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+redis_conn = redis.from_url(cfg.REDIS_URL or "redis://localhost:6379/0")
 queue = Queue("bots", connection=redis_conn)
 
 # Database models ----------------------------------------------------------
@@ -153,24 +154,21 @@ def create_app(config: Optional[dict] = None) -> Flask:
     """Create and configure the Flask application."""
 
     base_dir = Path(__file__).resolve().parent
-    load_dotenv()
     app = Flask(
         __name__,
         static_folder=str(base_dir.parent / "app" / "static"),
         template_folder=str(base_dir.parent / "app" / "templates"),
     )
-    db_uri = os.getenv("DATABASE_URL")
-    if not db_uri:
-        db_uri = f"sqlite:///{os.getenv('DB_PATH', 'bots.db')}"
+    db_uri = os.getenv("DATABASE_URL") or f"sqlite:///{cfg.DB_PATH}"
     app.config.update(
         {
-            "SECRET_KEY": os.getenv("SECRET_KEY", "change-me"),
+            "SECRET_KEY": cfg.SECRET_KEY,
             "SQLALCHEMY_DATABASE_URI": db_uri,
             "SQLALCHEMY_TRACK_MODIFICATIONS": False,
-            "JWT_SECRET_KEY": os.getenv("JWT_SECRET_KEY", "jwt-secret"),
+            "JWT_SECRET_KEY": cfg.JWT_SECRET_KEY,
             "JWT_ACCESS_TOKEN_EXPIRES": timedelta(minutes=15),
             "JWT_REFRESH_TOKEN_EXPIRES": timedelta(days=1),
-            "TOTP_SECRET": os.getenv("TOTP_SECRET"),
+            "TOTP_SECRET": cfg.TOTP_SECRET,
         }
     )
     if config:

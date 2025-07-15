@@ -73,6 +73,9 @@ set, provide the current one-time password.
 
 ### Environment variables
 
+Configuration values are loaded from `.env` via `shared.config`. The most
+important variables are:
+
 - `PORT` – server port (default 5000)
 - `DB_PATH` – SQLite file (default `bots.db`)
 - `SECRET_KEY` – Flask secret key

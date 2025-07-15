@@ -8,6 +8,7 @@ import websockets
 MAX_RETRIES = 3
 KICK_URI = os.getenv("KICK_WS_URI", "wss://chat.kick.com")
 
+
 async def connect(token: str):
     headers = {"Authorization": f"Bearer {token}"}
     for attempt in range(1, MAX_RETRIES + 1):
@@ -24,6 +25,7 @@ async def connect(token: str):
             await asyncio.sleep(2)
     raise RuntimeError("Unable to connect to Kick")
 
+
 async def send_loop(channel: str, message: str, interval: int, token: str):
     ws = await connect(token)
     payload = json.dumps({"channel": channel, "message": message})
@@ -37,11 +39,14 @@ async def send_loop(channel: str, message: str, interval: int, token: str):
             await ws.send(payload)
         await asyncio.sleep(interval)
 
+
 def main():
     parser = argparse.ArgumentParser(description="Simple Kick chat bot")
     parser.add_argument("--channel", required=True, help="Kick channel name")
     parser.add_argument("--message", required=True, help="Message to send")
-    parser.add_argument("--interval", type=int, default=600, help="Send interval in seconds")
+    parser.add_argument(
+        "--interval", type=int, default=600, help="Send interval in seconds"
+    )
     parser.add_argument("--token", required=True, help="Kick auth_token")
     args = parser.parse_args()
 
@@ -49,6 +54,7 @@ def main():
         asyncio.run(send_loop(args.channel, args.message, args.interval, args.token))
     except KeyboardInterrupt:
         print("Bot stopped")
+
 
 if __name__ == "__main__":
     main()

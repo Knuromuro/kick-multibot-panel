@@ -39,7 +39,7 @@ jobs:
       env:
         DATABASE_URL: postgresql://postgres:postgres@localhost:5432/kickbot
         REDIS_URL: redis://localhost:6379/0
-      run: pytest -q
+      run: PYTHONPATH=. pytest -q
     - name: Deploy
       if: github.ref == 'refs/heads/main' && success()
       run: echo "Deploying to staging..."
