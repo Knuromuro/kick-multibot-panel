@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>{% block title %}KickBot{% endblock %}</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body class="p-4 container mx-auto" id="body">
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      <ul class="mb-4">
+        {% for m in messages %}
+          <li class="bg-green-200 p-2 mb-2">{{ m }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  {% endwith %}
+  <div class="flex justify-between items-center mb-4">
+    {% if session.get('user') %}
+      <a href="{{ url_for('panel.logout') }}" class="text-blue-600 underline">Logout</a>
+    {% endif %}
+    <button id="themeToggle" class="text-sm underline">Toggle theme</button>
+  </div>
+  <div id="offlineBanner" class="hidden bg-red-200 p-2 mb-2" aria-live="polite">Offline mode</div>
+  {% block content %}{% endblock %}
+  <script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('{{ url_for('static', filename='sw.js') }}');
+  }
+  const body = document.getElementById('body');
+  const theme = localStorage.getItem('theme') || 'light';
+  body.dataset.theme = theme;
+  document.getElementById('themeToggle').addEventListener('click', () => {
+    body.dataset.theme = body.dataset.theme === 'dark' ? 'light' : 'dark';
+    localStorage.setItem('theme', body.dataset.theme);
+  });
+  window.addEventListener('offline', () => document.getElementById('offlineBanner').classList.remove('hidden'));
+  window.addEventListener('online', () => document.getElementById('offlineBanner').classList.add('hidden'));
+  </script>
+</body>
+</html>
