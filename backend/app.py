@@ -30,6 +30,8 @@ from bots.instance import BotInstance
 from shared.cache import cache, init_cache
 from shared.logger import logger
 
+ANALYTICS_LOG = Path("analytics.log")
+
 # Global extensions ---------------------------------------------------------
 
 db = SQLAlchemy()
@@ -133,6 +135,15 @@ def create_app(config: Optional[dict] = None) -> Flask:
     db.init_app(app)
     socketio.init_app(app)
 
+    @app.before_request
+    def log_request() -> None:
+        entry = f"{datetime.utcnow().isoformat()} {request.path} {request.headers.get('User-Agent','')}\n"
+        try:
+            with ANALYTICS_LOG.open("a") as fh:
+                fh.write(entry)
+        except Exception:
+            pass
+
     register_web(app)
     register_api(app)
 
@@ -151,14 +162,24 @@ ns = api.namespace("api", path="/dashboard/api")
 @ns.route("/groups", methods=["GET", "POST"], endpoint="groups")
 class GroupResource(Resource):
     def get(self):
-        groups = cache.get("groups")
-        if groups is None:
-            groups = [
-                {"id": g.id, "name": g.name, "target": g.target, "interval": g.interval}
-                for g in Group.query.all()
-            ]
+        search = request.args.get("search", "").strip()
+        page = int(request.args.get("page", 1))
+        per_page = int(request.args.get("per_page", 50))
+        if not search and page == 1 and per_page == 50:
+            groups = cache.get("groups")
+            if groups is not None:
+                return groups
+        query = Group.query
+        if search:
+            query = query.filter(Group.name.ilike(f"%{search}%"))
+        pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+        groups = [
+            {"id": g.id, "name": g.name, "target": g.target, "interval": g.interval}
+            for g in pagination.items
+        ]
+        if not search and page == 1 and per_page == 50:
             cache.set("groups", groups, timeout=60)
-        return groups
+        return {"items": groups, "total": pagination.total}
 
     def post(self):
         data = request.get_json(silent=True) or {}
@@ -180,14 +201,24 @@ class GroupResource(Resource):
 @ns.route("/accounts", methods=["GET", "POST"], endpoint="accounts")
 class AccountResource(Resource):
     def get(self):
-        accounts = cache.get("accounts")
-        if accounts is None:
-            accounts = [
-                {"id": a.id, "username": a.username, "group_id": a.group_id}
-                for a in Account.query.all()
-            ]
+        search = request.args.get("search", "").strip()
+        page = int(request.args.get("page", 1))
+        per_page = int(request.args.get("per_page", 50))
+        if not search and page == 1 and per_page == 50:
+            accounts = cache.get("accounts")
+            if accounts is not None:
+                return accounts
+        query = Account.query
+        if search:
+            query = query.filter(Account.username.ilike(f"%{search}%"))
+        pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+        accounts = [
+            {"id": a.id, "username": a.username, "group_id": a.group_id}
+            for a in pagination.items
+        ]
+        if not search and page == 1 and per_page == 50:
             cache.set("accounts", accounts, timeout=60)
-        return accounts
+        return {"items": accounts, "total": pagination.total}
 
     def post(self):
         data = request.get_json(silent=True) or {}
@@ -225,14 +256,21 @@ class SchedulerStart(Resource):
 @ns.route("/bots", methods=["GET"], endpoint="bot_list")
 class BotList(Resource):
     def get(self):
+        search = request.args.get("search", "").strip()
+        page = int(request.args.get("page", 1))
+        per_page = int(request.args.get("per_page", 50))
+        query = Account.query
+        if search:
+            query = query.filter(Account.username.ilike(f"%{search}%"))
+        pagination = query.paginate(page=page, per_page=per_page, error_out=False)
         result = []
-        for acc in Account.query.all():
+        for acc in pagination.items:
             status = "offline"
             bot = bots.get(acc.id)
             if bot and bot.ws and not bot.ws.closed:
                 status = "online"
             result.append({"id": acc.id, "username": acc.username, "status": status})
-        return result
+        return {"items": result, "total": pagination.total}
 
 
 # Bot process management ---------------------------------------------------

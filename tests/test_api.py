@@ -27,7 +27,11 @@ def test_create_group(client):
 
     res = client.get("/dashboard/api/groups")
     assert res.status_code == 200
-    assert any(g["id"] == gid for g in res.get_json())
+    data = res.get_json()
+    assert any(g["id"] == gid for g in data["items"]) and data["total"] == 1
+
+    res = client.get("/dashboard/api/groups?search=grp")
+    assert res.get_json()["total"] == 1
 
     # duplicate name should fail
     res = client.post("/dashboard/api/groups", json={"name": "grp", "target": "chan2"})
@@ -46,7 +50,8 @@ def test_create_account(client):
     aid = res.get_json()["id"]
 
     res = client.get("/dashboard/api/accounts")
-    assert any(a["id"] == aid for a in res.get_json())
+    data = res.get_json()
+    assert any(a["id"] == aid for a in data["items"]) and data["total"] == 1
 
 
 def test_stats_endpoint(client):

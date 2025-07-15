@@ -19,8 +19,11 @@ function closeModal(id) { document.getElementById(id).close(); }
 function closeCmd() { document.getElementById('cmdDialog').close(); }
 
 async function loadGroups() {
-  const groups = await api('/dashboard/api/groups');
-  if (!groups) return;
+  const q = document.getElementById('groupSearch').value;
+  const url = '/dashboard/api/groups?search=' + encodeURIComponent(q);
+  const data = await api(url);
+  if (!data) return;
+  const groups = data.items || data;
   const list = document.getElementById('groupList');
   list.innerHTML = '';
   groups.forEach(g => {
@@ -31,8 +34,11 @@ async function loadGroups() {
 }
 
 async function loadAccounts() {
-  const accs = await api('/dashboard/api/accounts');
-  if (!accs) return;
+  const q = document.getElementById('accountSearch').value;
+  const url = '/dashboard/api/accounts?search=' + encodeURIComponent(q);
+  const data = await api(url);
+  if (!data) return;
+  const accs = data.items || data;
   const table = document.getElementById('accountTable');
   table.innerHTML = '<tr><th>ID</th><th>User</th><th>Group</th></tr>';
   accs.forEach(a => {
@@ -43,8 +49,11 @@ async function loadAccounts() {
 }
 
 async function loadBots() {
-  const bots = await api('/dashboard/api/bots');
-  if (!bots) return;
+  const q = document.getElementById('botSearch').value;
+  const url = '/dashboard/api/bots?search=' + encodeURIComponent(q);
+  const data = await api(url);
+  if (!data) return;
+  const bots = data.items || data;
   const container = document.getElementById('bots');
   container.innerHTML = '';
   bots.forEach(b => {
@@ -86,6 +95,9 @@ async function fetchLogs(id) {
 
 document.getElementById('addGroupBtn').addEventListener('click', () => openModal('groupModal'));
 document.getElementById('addAccountBtn').addEventListener('click', () => openModal('accountModal'));
+document.getElementById('groupSearch').addEventListener('input', loadGroups);
+document.getElementById('accountSearch').addEventListener('input', loadAccounts);
+document.getElementById('botSearch').addEventListener('input', loadBots);
 
 document.getElementById('groupForm').addEventListener('submit', async e => {
   e.preventDefault();
@@ -144,3 +156,7 @@ loadGroups();
 loadAccounts();
 loadBots();
 refreshStats();
+
+window.addEventListener('load', () => {
+  if (!navigator.onLine) document.getElementById('offlineBanner').classList.remove('hidden');
+});

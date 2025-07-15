@@ -8,6 +8,7 @@
       <span class="font-bold">Groups</span>
       <button id="addGroupBtn" class="bg-green-600 text-white px-2 py-1 text-sm">Add</button>
     </div>
+    <input id="groupSearch" class="border w-full mb-2" placeholder="Search groups">
     <ul id="groupList" class="space-y-1"></ul>
   </aside>
   <main class="md:flex-1 p-2" id="mainArea">
@@ -15,10 +16,12 @@
       <span class="font-bold">Accounts</span>
       <button id="addAccountBtn" class="bg-green-600 text-white px-2 py-1 text-sm">Add</button>
     </div>
+    <input id="accountSearch" class="border w-full mb-2" placeholder="Search accounts">
     <table id="accountTable" class="w-full border-collapse mb-4"></table>
     <section class="mb-4">
       <h2 class="font-bold">Bots</h2>
       <button onclick="startScheduler()" class="bg-blue-500 text-white px-2 py-1 mb-2">Start Scheduler</button>
+      <input id="botSearch" class="border w-full mb-2" placeholder="Search bots">
       <div id="bots" class="space-y-2"></div>
     </section>
     <section class="mb-4">

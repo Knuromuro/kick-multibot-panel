@@ -10,3 +10,13 @@ table th {
 #spinner {
   z-index: 50;
 }
+
+[data-theme="dark"] {
+  --bg: #1f2937;
+  --fg: #f9fafb;
+}
+
+[data-theme="dark"] body {
+  background-color: var(--bg);
+  color: var(--fg);
+}

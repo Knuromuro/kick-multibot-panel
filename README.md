@@ -8,6 +8,8 @@ KickBot Manager is a lightweight dashboard for controlling chat bots on [Kick.co
 - Start an asynchronous scheduler that sends messages from accounts to their group's target
 - Issue commands to running bots: send a message, check status, restart connection or capture a screenshot
 - View the last 50 log lines per bot
+- Search and filter bots or groups right from the dashboard
+- Dark mode toggle and offline indicator
 
 ## Setup
 
