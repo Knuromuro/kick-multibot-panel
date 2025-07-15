@@ -9,12 +9,13 @@ from datetime import datetime
 from pathlib import Path
 from threading import Thread
 from typing import Dict, Optional
+from functools import wraps
 
 import psutil
 import redis
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
-from flask import Blueprint, Flask, Response, request, current_app
+from flask import Blueprint, Flask, Response, request, current_app, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_socketio import SocketIO
 from flask_wtf import CSRFProtect
@@ -22,10 +23,20 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_talisman import Talisman
 from flask_restx import Api, Resource
+from flask_jwt_extended import (
+    JWTManager,
+    create_access_token,
+    create_refresh_token,
+    get_jwt,
+    jwt_required,
+    verify_jwt_in_request,
+)
+from datetime import timedelta
 from prometheus_client import Counter, Gauge, generate_latest
 from rq import Queue, Retry
 
 from app.routes import register_web
+from dotenv import load_dotenv
 from bots.instance import BotInstance
 from shared.cache import cache, init_cache
 from shared.logger import logger
@@ -40,6 +51,7 @@ csrf = CSRFProtect()
 limiter = Limiter(key_func=get_remote_address)
 talisman = Talisman()
 api = Api(doc="/docs")
+jwt = JWTManager()
 
 # Prometheus metrics
 runs_counter = Counter("bot_runs", "Number of bot executions")
@@ -104,6 +116,7 @@ def create_app(config: Optional[dict] = None) -> Flask:
     """Create and configure the Flask application."""
 
     base_dir = Path(__file__).resolve().parent
+    load_dotenv()
     app = Flask(
         __name__,
         static_folder=str(base_dir.parent / "app" / "static"),
@@ -117,6 +130,10 @@ def create_app(config: Optional[dict] = None) -> Flask:
             "SECRET_KEY": os.getenv("SECRET_KEY", "change-me"),
             "SQLALCHEMY_DATABASE_URI": db_uri,
             "SQLALCHEMY_TRACK_MODIFICATIONS": False,
+            "JWT_SECRET_KEY": os.getenv("JWT_SECRET_KEY", "jwt-secret"),
+            "JWT_ACCESS_TOKEN_EXPIRES": timedelta(minutes=15),
+            "JWT_REFRESH_TOKEN_EXPIRES": timedelta(days=1),
+            "TOTP_SECRET": os.getenv("TOTP_SECRET"),
         }
     )
     if config:
@@ -131,13 +148,24 @@ def create_app(config: Optional[dict] = None) -> Flask:
     csrf.init_app(app)
     csrf.exempt(api_bp)
     limiter.init_app(app)
-    talisman.init_app(app, force_https=not app.config.get("TESTING", False))
+    csp = {
+        "default-src": ["'self'"],
+        "script-src": ["'self'", "https://cdn.jsdelivr.net"],
+        "style-src": ["'self'", "https://cdn.jsdelivr.net"],
+    }
+    talisman.init_app(
+        app,
+        force_https=not app.config.get("TESTING", False),
+        content_security_policy=csp,
+    )
+    jwt.init_app(app)
     db.init_app(app)
     socketio.init_app(app)
 
     @app.before_request
     def log_request() -> None:
-        entry = f"{datetime.utcnow().isoformat()} {request.path} {request.headers.get('User-Agent','')}\n"
+        ua = request.headers.get("User-Agent", "")
+        entry = f"{datetime.utcnow().isoformat()} {request.path} {ua}\n"
         try:
             with ANALYTICS_LOG.open("a") as fh:
                 fh.write(entry)
@@ -156,11 +184,68 @@ def create_app(config: Optional[dict] = None) -> Flask:
 # API blueprint ------------------------------------------------------------
 
 api_bp = Blueprint("api", __name__)
+auth_bp = Blueprint("auth", __name__)
 ns = api.namespace("api", path="/dashboard/api")
+
+
+def role_required(*roles):
+    def decorator(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            if current_app.config.get("TESTING"):
+                return fn(*args, **kwargs)
+            if session.get("role") and session["role"] in roles:
+                return fn(*args, **kwargs)
+            verify_jwt_in_request()
+            claims = get_jwt()
+            if claims.get("sub", {}).get("role") not in roles:
+                return {"msg": "forbidden"}, 403
+            return fn(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+@auth_bp.route("/auth/token", methods=["POST"])
+@limiter.limit("5/minute")
+def get_token():
+    data = request.get_json() or {}
+    user = data.get("username")
+    password = data.get("password")
+    totp_code = data.get("totp")
+    role = None
+    if user == "admin" and password == os.getenv("ADMIN_PASSWORD", "admin"):
+        role = "admin"
+    elif user == "operator" and password == os.getenv("OPERATOR_PASSWORD", "operator"):
+        role = "operator"
+    else:
+        logger.warning("invalid credentials for %s", user)
+        return {"msg": "bad credentials"}, 401
+    secret = os.getenv("TOTP_SECRET")
+    if secret:
+        import pyotp
+
+        totp = pyotp.TOTP(secret)
+        if not totp.verify(str(totp_code)):
+            logger.warning("invalid totp for %s", user)
+            return {"msg": "invalid token"}, 401
+    access = create_access_token(identity={"user": user, "role": role})
+    refresh = create_refresh_token(identity={"user": user, "role": role})
+    return {"access_token": access, "refresh_token": refresh}
+
+
+@auth_bp.route("/auth/refresh", methods=["POST"])
+@jwt_required(refresh=True)
+def refresh_token():
+    identity = get_jwt()["sub"]
+    access = create_access_token(identity=identity)
+    return {"access_token": access}
 
 
 @ns.route("/groups", methods=["GET", "POST"], endpoint="groups")
 class GroupResource(Resource):
+    @jwt_required(optional=True)
     def get(self):
         search = request.args.get("search", "").strip()
         page = int(request.args.get("page", 1))
@@ -181,6 +266,8 @@ class GroupResource(Resource):
             cache.set("groups", groups, timeout=60)
         return {"items": groups, "total": pagination.total}
 
+    @limiter.limit("10/minute")
+    @role_required("operator", "admin")
     def post(self):
         data = request.get_json(silent=True) or {}
         name = data.get("name")
@@ -200,6 +287,7 @@ class GroupResource(Resource):
 
 @ns.route("/accounts", methods=["GET", "POST"], endpoint="accounts")
 class AccountResource(Resource):
+    @jwt_required(optional=True)
     def get(self):
         search = request.args.get("search", "").strip()
         page = int(request.args.get("page", 1))
@@ -220,6 +308,8 @@ class AccountResource(Resource):
             cache.set("accounts", accounts, timeout=60)
         return {"items": accounts, "total": pagination.total}
 
+    @limiter.limit("10/minute")
+    @role_required("operator", "admin")
     def post(self):
         data = request.get_json(silent=True) or {}
         username = data.get("username")
@@ -245,6 +335,8 @@ class AccountResource(Resource):
 
 @ns.route("/scheduler/start", methods=["POST"], endpoint="scheduler_start")
 class SchedulerStart(Resource):
+    @limiter.limit("5/minute")
+    @role_required("operator", "admin")
     def post(self):
         if not sched.running:
             sched.start()
@@ -255,6 +347,7 @@ class SchedulerStart(Resource):
 
 @ns.route("/bots", methods=["GET"], endpoint="bot_list")
 class BotList(Resource):
+    @jwt_required(optional=True)
     def get(self):
         search = request.args.get("search", "").strip()
         page = int(request.args.get("page", 1))
@@ -278,6 +371,8 @@ class BotList(Resource):
 
 @ns.route("/bots/<int:bot_id>/start", methods=["POST"], endpoint="bot_start")
 class BotStart(Resource):
+    @limiter.limit("10/minute")
+    @role_required("operator", "admin")
     def post(self, bot_id: int):
         if bot_id in processes:
             return {"status": "already running"}
@@ -316,6 +411,8 @@ class BotStart(Resource):
 
 @ns.route("/bots/<int:bot_id>/stop", methods=["POST"], endpoint="bot_stop")
 class BotStop(Resource):
+    @limiter.limit("10/minute")
+    @role_required("operator", "admin")
     def post(self, bot_id: int):
         proc = processes.get(bot_id)
         if not proc:
@@ -332,6 +429,7 @@ class BotStop(Resource):
 
 @ns.route("/bots/<int:bot_id>/status", methods=["GET"], endpoint="bot_status")
 class BotStatus(Resource):
+    @jwt_required(optional=True)
     def get(self, bot_id: int):
         proc = processes.get(bot_id)
         if not proc:
@@ -348,6 +446,8 @@ class BotStatus(Resource):
 
 @ns.route("/bots/<int:bot_id>/schedule", methods=["POST"], endpoint="bot_schedule")
 class BotSchedule(Resource):
+    @limiter.limit("5/minute")
+    @role_required("operator", "admin")
     def post(self, bot_id: int):
         job = queue.enqueue(run_bot_task, bot_id, retry=Retry(max=3))
         return {"job_id": job.id}
@@ -355,6 +455,8 @@ class BotSchedule(Resource):
 
 @ns.route("/bots/<int:bid>/command", methods=["POST"], endpoint="bot_command")
 class BotCommand(Resource):
+    @limiter.limit("10/minute")
+    @role_required("operator", "admin")
     def post(self, bid: int):
         cmd = (request.json or {}).get("cmd")
         args = (request.json or {}).get("args", {})
@@ -379,6 +481,7 @@ class BotCommand(Resource):
 
 @ns.route("/bots/<int:bid>/logs", methods=["GET"], endpoint="bot_logs")
 class BotLogs(Resource):
+    @jwt_required(optional=True)
     def get(self, bid: int):
         path = Path("logs") / f"bot_{bid}.log"
         if not path.exists():
@@ -388,12 +491,14 @@ class BotLogs(Resource):
 
 
 @api_bp.route("/metrics")
+@jwt_required(optional=True)
 def metrics():
     data = generate_latest()
     return Response(data, mimetype="text/plain")
 
 
 @api_bp.route("/dashboard/api/stats")
+@jwt_required(optional=True)
 def stats():
     """Return simple counter stats for charts."""
     return {
@@ -495,3 +600,4 @@ async def send_job(account_id: int) -> None:
 def register_api(app: Flask) -> None:
     api.init_app(app)
     app.register_blueprint(api_bp)
+    app.register_blueprint(auth_bp)

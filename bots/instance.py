@@ -30,6 +30,9 @@ class BotInstance:
 
     def _init_driver(self):
         opts = Options()
+        opts.add_argument("--headless")
+        opts.add_argument("--disable-gpu")
+        opts.add_argument("--disable-extensions")
         opts.add_argument("--start-maximized")
         if self.account.proxy:
             opts.add_argument(f"--proxy-server={self.account.proxy}")
@@ -54,6 +57,11 @@ class BotInstance:
         if self.driver is None:
             self._init_driver()
         d = self.driver
+        d.delete_all_cookies()
+        try:
+            d.execute_script("window.localStorage.clear();")
+        except Exception:
+            pass
         for attempt in range(3):
             try:
                 d.get(BASE_URL)

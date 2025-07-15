@@ -1,80 +1,101 @@
 from functools import wraps
+import os
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 from authlib.integrations.flask_client import OAuth
 
-bp = Blueprint('panel', __name__)
+bp = Blueprint("panel", __name__)
 oauth = OAuth()
+
 
 def login_required(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         from flask import current_app
-        if current_app.config.get('TESTING'):
+
+        if current_app.config.get("TESTING"):
             return func(*args, **kwargs)
-        if 'user' not in session:
-            return redirect(url_for('panel.login'))
+        if "user" not in session:
+            return redirect(url_for("panel.login"))
         return func(*args, **kwargs)
+
     return wrapper
+
 
 def require_role(*roles):
     def decorator(func):
         @wraps(func)
         def inner(*args, **kwargs):
-            if session.get('role') not in roles:
-                flash('Unauthorized')
-                return redirect(url_for('panel.dashboard'))
+            if session.get("role") not in roles:
+                flash("Unauthorized")
+                return redirect(url_for("panel.dashboard"))
             return func(*args, **kwargs)
+
         return inner
+
     return decorator
 
-@bp.route('/')
+
+@bp.route("/")
 def index():
-    if 'user' in session:
-        return redirect(url_for('panel.dashboard'))
-    return redirect(url_for('panel.login'))
+    if "user" in session:
+        return redirect(url_for("panel.dashboard"))
+    return redirect(url_for("panel.login"))
 
-@bp.route('/login', methods=['GET', 'POST'])
+
+@bp.route("/login", methods=["GET", "POST"])
 def login():
-    if request.method == 'POST':
-        user = request.form.get('username')
-        pwd = request.form.get('password')
-        if user == 'admin' and pwd == 'admin':
-            session['user'] = 'admin'
-            session['role'] = 'admin'
-            return redirect(url_for('panel.dashboard'))
-        if user == 'operator' and pwd == 'operator':
-            session['user'] = 'operator'
-            session['role'] = 'operator'
-            return redirect(url_for('panel.dashboard'))
-        flash('Invalid credentials')
-    return render_template('login.html')
+    if request.method == "POST":
+        user = request.form.get("username")
+        pwd = request.form.get("password")
+        token = request.form.get("totp")
+        secret = os.getenv("TOTP_SECRET")
+        if secret:
+            import pyotp
 
-@bp.route('/login/<provider>')
+            totp = pyotp.TOTP(secret)
+            if not totp.verify(str(token)):
+                flash("Invalid TOTP")
+                return render_template("login.html")
+        if user == "admin" and pwd == "admin":
+            session["user"] = "admin"
+            session["role"] = "admin"
+            return redirect(url_for("panel.dashboard"))
+        if user == "operator" and pwd == "operator":
+            session["user"] = "operator"
+            session["role"] = "operator"
+            return redirect(url_for("panel.dashboard"))
+        flash("Invalid credentials")
+    return render_template("login.html")
+
+
+@bp.route("/login/<provider>")
 def oauth_login(provider):
     client = oauth.create_client(provider)
-    redirect_uri = url_for('panel.oauth_callback', provider=provider, _external=True)
+    redirect_uri = url_for("panel.oauth_callback", provider=provider, _external=True)
     return client.authorize_redirect(redirect_uri)
 
 
-@bp.route('/auth/<provider>')
+@bp.route("/auth/<provider>")
 def oauth_callback(provider):
     client = oauth.create_client(provider)
     token = client.authorize_access_token()
-    user_info = token.get('userinfo') or {}
-    session['user'] = user_info.get('email', 'oauth')
-    session['role'] = 'viewer'
-    return redirect(url_for('panel.dashboard'))
+    user_info = token.get("userinfo") or {}
+    session["user"] = user_info.get("email", "oauth")
+    session["role"] = "viewer"
+    return redirect(url_for("panel.dashboard"))
 
-@bp.route('/logout')
+
+@bp.route("/logout")
 def logout():
-    session.pop('user', None)
-    session.pop('role', None)
-    return redirect(url_for('panel.login'))
+    session.pop("user", None)
+    session.pop("role", None)
+    return redirect(url_for("panel.login"))
 
-@bp.route('/dashboard')
+
+@bp.route("/dashboard")
 @login_required
 def dashboard():
-    return render_template('dashboard.html')
+    return render_template("dashboard.html")
 
 
 def register_web(app):
@@ -82,4 +103,4 @@ def register_web(app):
     oauth.init_app(app)
     app.register_blueprint(bp)
     # provide an alias so url_for('dashboard') works
-    app.add_url_rule('/dashboard', 'dashboard', dashboard)
+    app.add_url_rule("/dashboard", "dashboard", dashboard)

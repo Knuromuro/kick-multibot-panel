@@ -21,6 +21,15 @@ pip install -r requirements.txt
 python run.py
 ```
 
+Obtain an access token via:
+
+```bash
+curl -X POST http://localhost:5000/auth/token -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin","totp":"<code>"}'
+```
+
+Use the returned `access_token` in the `Authorization` header as `Bearer <token>` for API calls.
+
 Run the tests (including a headless browser end-to-end check):
 
 ```bash
@@ -59,7 +68,8 @@ During development you can also run the backend module directly:
 python backend/app.py
 ```
 
-Login at `http://localhost:5000/login` with **admin/admin**.
+Login at `http://localhost:5000/login` with **admin/admin**. If `TOTP_SECRET` is
+set, provide the current one-time password.
 
 ### Environment variables
 
@@ -70,6 +80,8 @@ Login at `http://localhost:5000/login` with **admin/admin**.
 - `MAX_INSTANCES` – maximum concurrent scheduled jobs (default 50)
 - `KICK_WS_URI` – WebSocket endpoint for Kick chat
 - `REDIS_URL` – Redis connection string for task queue and caching
+- `JWT_SECRET_KEY` – secret used to sign access tokens
+- `TOTP_SECRET` – base32 secret for two factor login
 
 The backend exposes Prometheus metrics at `/metrics` and uses Redis + RQ for background jobs.
 

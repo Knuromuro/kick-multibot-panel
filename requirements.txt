@@ -16,3 +16,7 @@ Flask-Limiter
 Flask-Talisman
 Authlib
 psycopg2-binary
+Flask-JWT-Extended
+python-dotenv
+marshmallow
+pyotp
