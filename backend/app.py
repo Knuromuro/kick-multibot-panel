@@ -173,6 +173,9 @@ def create_app(config: Optional[dict] = None) -> Flask:
             "SLACK_WEBHOOK": cfg.SLACK_WEBHOOK,
             "TELEGRAM_TOKEN": cfg.TELEGRAM_TOKEN,
             "TELEGRAM_CHAT_ID": cfg.TELEGRAM_CHAT_ID,
+            "SESSION_COOKIE_HTTPONLY": True,
+            "SESSION_COOKIE_SAMESITE": "Lax",
+            "SESSION_COOKIE_SECURE": not os.getenv("DEBUG", "true").lower() == "true",
         }
     )
     if config:
@@ -182,7 +185,7 @@ def create_app(config: Optional[dict] = None) -> Flask:
     if testing:
         app.config["TESTING"] = True
         app.config["WTF_CSRF_ENABLED"] = False
-
+    app.config.setdefault("LOGIN_DISABLED", bool(testing))
     init_cache(app)
     init_logging(app.config.get("SENTRY_DSN"))
     csrf.init_app(app)
@@ -283,6 +286,8 @@ def get_token():
     claims = {"role": role}
     access = create_access_token(identity=user, additional_claims=claims)
     refresh = create_refresh_token(identity=user, additional_claims=claims)
+    session["user"] = user
+    session["role"] = role
     return {"access_token": access, "refresh_token": refresh}
 
 

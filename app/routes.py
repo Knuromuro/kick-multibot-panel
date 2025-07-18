@@ -1,8 +1,34 @@
-from flask import Blueprint, render_template, redirect, url_for, session
+import os
+from functools import wraps
+from flask import (
+    Blueprint,
+    render_template,
+    redirect,
+    url_for,
+    session,
+    request,
+    flash,
+    current_app,
+    jsonify,
+)
+from flask_jwt_extended import verify_jwt_in_request
+from flask_jwt_extended import create_access_token, create_refresh_token
 from authlib.integrations.flask_client import OAuth
 
 bp = Blueprint("panel", __name__)
 oauth = OAuth()
+
+
+def login_required(fn):
+    """Redirect to login if the user is not authenticated."""
+
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if session.get("user"):
+            return fn(*args, **kwargs)
+        return redirect(url_for("panel.login"))
+
+    return wrapper
 
 
 @bp.route("/")
@@ -10,8 +36,26 @@ def index():
     return redirect(url_for("panel.login"))
 
 
-@bp.route("/login")
+@bp.route("/login", methods=["GET", "POST"])
 def login():
+    if request.method == "POST":
+        data = request.get_json(silent=True) or request.form
+        user = data.get("username")
+        password = data.get("password")
+        if user == "admin" and password == os.getenv("ADMIN_PASSWORD", "admin"):
+            session["user"] = user
+            session["role"] = "admin"
+            claims = {"role": "admin"}
+            access = create_access_token(identity=user, additional_claims=claims)
+            refresh = create_refresh_token(identity=user, additional_claims=claims)
+            if request.is_json:
+                return {"access_token": access, "refresh_token": refresh}
+            flash("Login successful", "info")
+            return redirect(url_for("panel.dashboard"))
+        flash("Invalid credentials", "error")
+        if request.is_json:
+            return {"msg": "bad credentials"}, 401
+        return render_template("login.html"), 401
     return render_template("login.html")
 
 
@@ -39,7 +83,32 @@ def logout():
     return redirect(url_for("panel.login"))
 
 
+@bp.before_app_request
+def enforce_authentication():
+    if current_app.config.get("LOGIN_DISABLED"):
+        return
+    if request.path.startswith("/static"):
+        return
+    if request.endpoint in (
+        "panel.login",
+        "panel.oauth_login",
+        "panel.oauth_callback",
+    ):
+        return
+    if request.path.startswith("/dashboard/api"):
+        if session.get("user"):
+            return
+        try:
+            verify_jwt_in_request()
+        except Exception:
+            return jsonify({"error": "unauthorized"}), 401
+    elif request.path.startswith("/dashboard"):
+        if not session.get("user"):
+            return redirect(url_for("panel.login"))
+
+
 @bp.route("/dashboard")
+@login_required
 def dashboard():
     return render_template("dashboard.html")
 

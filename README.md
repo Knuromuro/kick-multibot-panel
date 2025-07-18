@@ -21,9 +21,10 @@ pip install -r requirements.txt
 python run.py
 ```
 
-By default the dashboard uses JWT authentication. Login at `/login` and the page
-will store access and refresh tokens in `localStorage`. Tokens are automatically
-refreshed when API requests return `401 Unauthorized`.
+Log in at `/login` using the default credentials (**admin/admin**). A session
+cookie will be created and the response also includes JWT access and refresh
+tokens which the page stores in `localStorage`. API requests automatically
+refresh the token when a `401 Unauthorized` response is received.
 
 If `TOTP_SECRET` is set, the login form will ask for a time based one time
 password.
