@@ -17,7 +17,11 @@ form.addEventListener('submit', async e => {
   const data = Object.fromEntries(new FormData(form).entries());
   const res = await fetch('/auth/token', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+    },
     body: JSON.stringify(data)
   });
   if (res.ok) {

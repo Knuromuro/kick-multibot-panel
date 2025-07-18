@@ -248,7 +248,7 @@ def role_required(*roles):
                 return fn(*args, **kwargs)
             verify_jwt_in_request()
             claims = get_jwt()
-            if claims.get("sub", {}).get("role") not in roles:
+            if claims.get("role") not in roles:
                 return {"msg": "forbidden"}, 403
             return fn(*args, **kwargs)
 
@@ -280,16 +280,20 @@ def get_token():
         if not totp.verify(str(totp_code)):
             logger.warning("invalid totp for %s", user)
             return {"msg": "invalid token"}, 401
-    access = create_access_token(identity={"user": user, "role": role})
-    refresh = create_refresh_token(identity={"user": user, "role": role})
+    claims = {"role": role}
+    access = create_access_token(identity=user, additional_claims=claims)
+    refresh = create_refresh_token(identity=user, additional_claims=claims)
     return {"access_token": access, "refresh_token": refresh}
 
 
 @auth_bp.route("/auth/refresh", methods=["POST"])
 @jwt_required(refresh=True)
 def refresh_token():
-    identity = get_jwt()["sub"]
-    access = create_access_token(identity=identity)
+    claims = get_jwt()
+    identity = claims["sub"]
+    access = create_access_token(
+        identity=identity, additional_claims={"role": claims.get("role")}
+    )
     return {"access_token": access}
 
 
