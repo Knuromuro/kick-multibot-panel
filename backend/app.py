@@ -7,7 +7,8 @@ import os
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from threading import Thread
+from threading import Thread, Timer
+import json
 from typing import Dict, Optional
 from uuid import uuid4
 from functools import wraps
@@ -45,6 +46,7 @@ from shared.cache import cache, init_cache
 from shared.logger import logger, init_logging, notify_webhook
 
 ANALYTICS_LOG = Path("analytics.log")
+SYNC_FALLBACK = Path("sync_fallback.jsonl")
 
 # Global extensions ---------------------------------------------------------
 
@@ -90,6 +92,7 @@ _thread.start()
 # Redis queue
 redis_conn = None
 queue = None
+redis_online = True
 
 # Database models ----------------------------------------------------------
 
@@ -217,13 +220,17 @@ def create_app(config: Optional[dict] = None) -> Flask:
     app.config.setdefault("LOGIN_DISABLED", bool(testing))
     init_cache(app)
     init_logging(app.config.get("SENTRY_DSN"))
-    global redis_conn, queue
+    global redis_conn, queue, redis_online
     redis_conn = redis.from_url(cfg.REDIS_URL or "redis://localhost:6379/0")
     queue = Queue("bots", connection=redis_conn)
     try:
         redis_conn.ping()
+        redis_online = True
     except Exception:  # noqa: broad-except
+        redis_online = False
         logger.warning("Redis unavailable, tasks will run inline")
+    app.redis_online = redis_online
+    app.config.setdefault("SYNC_FALLBACK_FILE", str(SYNC_FALLBACK))
     csrf.init_app(app)
     csrf.exempt(api_bp)
     limiter.init_app(app)
@@ -245,9 +252,42 @@ def create_app(config: Optional[dict] = None) -> Flask:
 
         def enqueue_sync():
             try:
+                redis_conn.ping()
+                fb = Path(app.config.get("SYNC_FALLBACK_FILE", SYNC_FALLBACK))
+                if fb.exists():
+                    fb.unlink()
                 queue.enqueue(process_unsent_events)
+                if not getattr(app, "redis_online", True):
+                    socketio.emit("redis_status", {"online": True})
+                app.redis_online = True
             except RedisConnError:
-                logger.warning("Redis unavailable, skipping sync enqueue")
+                logger.warning("Redis unavailable, deferring sync")
+                if getattr(app, "redis_online", True):
+                    socketio.emit("redis_status", {"online": False})
+                app.redis_online = False
+                events = SyncEvent.query.filter_by(synced=False).all()
+                fb = Path(app.config.get("SYNC_FALLBACK_FILE", SYNC_FALLBACK))
+                with fb.open("a") as fh:
+                    for e in events:
+                        fh.write(json.dumps({"event_id": e.event_id}) + "\n")
+
+                def retry():
+                    try:
+                        redis_conn.ping()
+                        queue.enqueue(process_unsent_events)
+                        fb = Path(app.config.get("SYNC_FALLBACK_FILE", SYNC_FALLBACK))
+                        if fb.exists():
+                            fb.unlink()
+                        socketio.emit("redis_status", {"online": True})
+                        app.redis_online = True
+                    except RedisConnError:
+                        events = SyncEvent.query.filter_by(synced=False).all()
+                        fb = Path(app.config.get("SYNC_FALLBACK_FILE", SYNC_FALLBACK))
+                        with fb.open("a") as fh:
+                            for e in events:
+                                fh.write(json.dumps({"event_id": e.event_id}) + "\n")
+
+                Timer(10, retry).start()
 
         sched.add_job(
             enqueue_sync,
@@ -623,6 +663,13 @@ def stats():
         "runs": runs_counter._value.get(),
         "errors": errors_counter._value.get(),
     }
+
+
+@api_bp.route("/dashboard/api/status")
+@jwt_required(optional=True)
+def app_status():
+    """Return simple status information for the UI."""
+    return {"redis_online": getattr(current_app, "redis_online", True)}
 
 
 @api_bp.route("/sync/pull", methods=["GET"])

@@ -30,6 +30,10 @@ refresh the token when a `401 Unauthorized` response is received.
 If `TOTP_SECRET` is set, the login form will ask for a time based one time
 password.
 
+The server writes unsent sync events to `sync_fallback.jsonl` if Redis is down
+and drains the file once the connection recovers. The dashboard shows a "Redis
+Offline" banner whenever this fallback is active.
+
 Obtain an access token via:
 
 ```bash

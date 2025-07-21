@@ -20,15 +20,15 @@ def auth_client(tmp_path):
 
 
 def test_login_success(auth_client):
-    res = auth_client.post("/login", json={"username": "admin", "password": "admin"})
-    assert res.status_code == 200
-    assert "access_token" in res.get_json()
+    res = auth_client.post("/login", data={"username": "admin", "password": "admin"})
+    assert res.status_code == 302
+    assert res.headers["Location"].endswith("/dashboard")
     res2 = auth_client.get("/dashboard")
     assert res2.status_code == 200
 
 
 def test_login_failure(auth_client):
-    res = auth_client.post("/login", json={"username": "admin", "password": "bad"})
+    res = auth_client.post("/login", data={"username": "admin", "password": "bad"})
     assert res.status_code == 401
 
 

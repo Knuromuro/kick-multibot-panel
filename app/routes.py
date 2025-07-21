@@ -12,7 +12,6 @@ from flask import (
     jsonify,
 )
 from flask_jwt_extended import verify_jwt_in_request
-from flask_jwt_extended import create_access_token, create_refresh_token
 from authlib.integrations.flask_client import OAuth
 
 bp = Blueprint("panel", __name__)
@@ -24,53 +23,46 @@ def login_required(fn):
 
     @wraps(fn)
     def wrapper(*args, **kwargs):
-        if session.get("user"):
+        if session.get("user_id"):
             return fn(*args, **kwargs)
-        return redirect(url_for("panel.login"))
+        return redirect(url_for("panel.login_get"))
 
     return wrapper
 
 
 @bp.route("/")
 def index():
-    return redirect(url_for("panel.login"))
+    return redirect(url_for("panel.login_get"))
 
 
-@bp.route("/login", methods=["GET", "POST"])
-def login():
-    if request.method == "POST":
-        data = request.get_json(silent=True) or request.form
-        user = data.get("username")
-        password = data.get("password")
-        if (user == "admin" and password == os.getenv("ADMIN_PASSWORD", "admin")) or (
-            user == "operator"
-            and password == os.getenv("OPERATOR_PASSWORD", "operator")
-        ):
-            secret = os.getenv("TOTP_SECRET")
-            if secret:
-                import pyotp
-
-                totp = pyotp.TOTP(secret)
-                if not totp.verify(str(data.get("totp"))):
-                    flash("Invalid token", "error")
-                    if request.is_json:
-                        return {"msg": "invalid token"}, 401
-                    return render_template("login.html"), 401
-            role = "admin" if user == "admin" else "operator"
-            session["user"] = user
-            session["role"] = role
-            claims = {"role": role}
-            access = create_access_token(identity=user, additional_claims=claims)
-            refresh = create_refresh_token(identity=user, additional_claims=claims)
-            if request.is_json:
-                return {"access_token": access, "refresh_token": refresh}
-            flash("Login successful", "info")
-            return redirect(url_for("panel.dashboard"))
-        flash("Invalid credentials", "error")
-        if request.is_json:
-            return {"msg": "bad credentials"}, 401
-        return render_template("login.html"), 401
+@bp.get("/login")
+def login_get():
     return render_template("login.html")
+
+
+@bp.post("/login")
+def login_post():
+    data = request.form
+    user = data.get("username")
+    password = data.get("password")
+    if (user == "admin" and password == os.getenv("ADMIN_PASSWORD", "admin")) or (
+        user == "operator" and password == os.getenv("OPERATOR_PASSWORD", "operator")
+    ):
+        secret = os.getenv("TOTP_SECRET")
+        if secret:
+            import pyotp
+
+            totp = pyotp.TOTP(secret)
+            if not totp.verify(str(data.get("totp"))):
+                flash("Invalid token", "error")
+                return render_template("login.html"), 401
+        role = "admin" if user == "admin" else "operator"
+        session["user_id"] = user
+        session["role"] = role
+        flash("Login successful", "info")
+        return redirect(url_for("panel.dashboard"))
+    flash("Invalid credentials", "error")
+    return render_template("login.html"), 401
 
 
 @bp.route("/login/<provider>")
@@ -85,16 +77,16 @@ def oauth_callback(provider):
     client = oauth.create_client(provider)
     token = client.authorize_access_token()
     user_info = token.get("userinfo") or {}
-    session["user"] = user_info.get("email", "oauth")
+    session["user_id"] = user_info.get("email", "oauth")
     session["role"] = "viewer"
     return redirect(url_for("panel.dashboard"))
 
 
 @bp.route("/logout")
 def logout():
-    session.pop("user", None)
+    session.pop("user_id", None)
     session.pop("role", None)
-    return redirect(url_for("panel.login"))
+    return redirect(url_for("panel.login_get"))
 
 
 @bp.before_app_request
@@ -104,21 +96,22 @@ def enforce_authentication():
     if request.path.startswith("/static"):
         return
     if request.endpoint in (
-        "panel.login",
+        "panel.login_get",
+        "panel.login_post",
         "panel.oauth_login",
         "panel.oauth_callback",
     ):
         return
     if request.path.startswith("/dashboard/api"):
-        if session.get("user"):
+        if session.get("user_id"):
             return
         try:
             verify_jwt_in_request()
         except Exception:
             return jsonify({"error": "unauthorized"}), 401
     elif request.path.startswith("/dashboard"):
-        if not session.get("user"):
-            return redirect(url_for("panel.login"))
+        if not session.get("user_id"):
+            return redirect(url_for("panel.login_get"))
 
 
 @bp.route("/dashboard")

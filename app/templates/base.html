@@ -22,12 +22,13 @@
   {% endwith %}
   <div class="flex justify-between items-center mb-4">
     <button id="menuToggle" class="md:hidden text-xl mr-2">&#9776;</button>
-    {% if session.get('user') %}
+    {% if session.get('user_id') %}
       <a href="{{ url_for('panel.logout') }}" class="text-blue-600 underline">Logout</a>
     {% endif %}
     <button id="themeToggle" class="text-sm underline">Toggle theme</button>
   </div>
   <div id="offlineBanner" class="hidden bg-red-200 p-2 mb-2" role="status" aria-live="polite">Offline mode</div>
+  <div id="redisBanner" class="hidden bg-yellow-200 p-2 mb-2" role="status" aria-live="polite">Redis offline</div>
   {% block content %}{% endblock %}
   <script>
   if ('serviceWorker' in navigator) {
@@ -48,6 +49,10 @@
   }
   window.addEventListener('offline', () => document.getElementById('offlineBanner').classList.remove('hidden'));
   window.addEventListener('online', () => document.getElementById('offlineBanner').classList.add('hidden'));
+  function updateRedis(status) {
+    const b = document.getElementById('redisBanner');
+    if (status) b.classList.add('hidden'); else b.classList.remove('hidden');
+  }
   </script>
 </body>
 </html>

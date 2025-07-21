@@ -7,7 +7,8 @@
 <div class="text-red-500">{{ messages[0] }}</div>
 {% endif %}
 {% endwith %}
-<form id="loginForm" class="space-y-2">
+<form method="POST" action="/login" class="space-y-2">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="text" name="username" placeholder="Username" class="border p-2 w-full" required>
   <input type="password" name="password" placeholder="Password" class="border p-2 w-full" required>
   {% if config.TOTP_SECRET %}
@@ -15,28 +16,4 @@
   {% endif %}
   <button type="submit" class="bg-blue-500 text-white px-4 py-2">Login</button>
 </form>
-<script>
-const form = document.getElementById('loginForm');
-form.addEventListener('submit', async e => {
-  e.preventDefault();
-  const data = Object.fromEntries(new FormData(form).entries());
-  const res = await fetch('/login', {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
-    },
-    body: JSON.stringify(data)
-  });
-  if (res.ok) {
-    const json = await res.json();
-    localStorage.setItem('accessToken', json.access_token);
-    localStorage.setItem('refreshToken', json.refresh_token);
-    window.location = '/dashboard';
-  } else {
-    window.location.reload();
-  }
-});
-</script>
 {% endblock %}

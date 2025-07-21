@@ -1,5 +1,6 @@
 const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
 const spinner = document.getElementById('spinner');
+const redisBanner = document.getElementById('redisBanner');
 let chart;
 
 function loadQueue() {
@@ -12,6 +13,14 @@ function saveQueue(q) {
 
 function showSpinner() { spinner.classList.remove('hidden'); }
 function hideSpinner() { spinner.classList.add('hidden'); }
+
+async function checkRedis() {
+  const res = await fetch('/dashboard/api/status').catch(() => null);
+  if (!res || !res.ok) return;
+  const data = await res.json();
+  if (data.redis_online) redisBanner.classList.add('hidden');
+  else redisBanner.classList.remove('hidden');
+}
 
 function getAccess() {
   return localStorage.getItem('accessToken');
@@ -239,8 +248,9 @@ const socket = io();
 ['bot_started','bot_stopped','bot_error','status'].forEach(evt => {
   socket.on(evt, () => { loadBots(); refreshStats(); });
 });
+socket.on('redis_status', () => checkRedis());
 socket.on('sync_event', syncPull);
-socket.on('connect', () => { syncPull(); syncPush(); });
+socket.on('connect', () => { syncPull(); syncPush(); checkRedis(); });
 
 loadGroups();
 loadAccounts();
@@ -248,6 +258,8 @@ loadBots();
 refreshStats();
 syncPull();
 syncPush();
+checkRedis();
+setInterval(checkRedis, 10000);
 
 window.addEventListener('load', () => {
   if (!navigator.onLine) document.getElementById('offlineBanner').classList.remove('hidden');
