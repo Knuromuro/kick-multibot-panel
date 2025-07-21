@@ -1,0 +1,8 @@
+{
+  "name": "KickBot Panel",
+  "short_name": "KickBot",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "description": "Manage Kick bots"
+}

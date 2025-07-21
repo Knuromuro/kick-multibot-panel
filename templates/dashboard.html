@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <title>Dashboard</title>
+  </head>
+  <body>
+    <nav class="bg-gray-800 p-2 text-white flex justify-between">
+      <div>KickBot</div>
+      <a href="{{ url_for('logout') }}">Logout</a>
+    </nav>
+    <div class="p-4">
+      <h2 class="text-xl mb-2">Groups</h2>
+      <ul id="group-list" class="mb-4">
+        {% for g in groups %}
+        <li>{{ g.name }}</li>
+        {% endfor %}
+      </ul>
+      <button id="add-group" class="bg-blue-500 text-white px-2 py-1 mb-4">Add Group</button>
+      <h2 class="text-xl mb-2">Bots</h2>
+      <ul id="bot-list">
+        {% for b in bots %}
+        <li data-id="{{ b.id }}" class="border p-2 mb-1 flex justify-between">
+          <span>{{ b.name }}</span>
+          <button class="start-bot bg-green-500 text-white px-2">Start</button>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+  </body>
+</html>
