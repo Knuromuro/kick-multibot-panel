@@ -101,6 +101,7 @@ important variables are:
 - `MAX_INSTANCES` – maximum concurrent scheduled jobs (default 50)
 - `KICK_WS_URI` – WebSocket endpoint for Kick chat
 - `REDIS_URL` – Redis connection string for task queue and caching
+- `MAX_DRIVERS` – size of the Selenium WebDriver pool (default 5)
 - `JWT_SECRET_KEY` – secret used to sign access tokens
 - `TOTP_SECRET` – base32 secret for two factor login
 - `SENTRY_DSN` – optional Sentry endpoint for error reporting
@@ -108,6 +109,7 @@ important variables are:
 - `TELEGRAM_TOKEN` and `TELEGRAM_CHAT_ID` – credentials for Telegram alerts
 
 The backend exposes Prometheus metrics at `/metrics` and uses Redis + RQ for background jobs.
+If Redis is unreachable, jobs run inline so scheduled tasks continue to work.
 It also provides `/sync/pull` and `/sync/push` for two-way event synchronization.
 Errors can optionally be reported to Sentry or Slack/Telegram via the environment
 variables `SENTRY_DSN`, `SLACK_WEBHOOK`, `TELEGRAM_TOKEN` and `TELEGRAM_CHAT_ID`.

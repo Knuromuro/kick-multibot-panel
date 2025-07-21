@@ -35,6 +35,7 @@ from flask_jwt_extended import (
 from datetime import timedelta
 from prometheus_client import Counter, Gauge, generate_latest
 from rq import Queue, Retry
+from redis.exceptions import ConnectionError as RedisConnError
 
 from app.routes import register_web
 from shared.config import load_config
@@ -206,8 +207,15 @@ def create_app(config: Optional[dict] = None) -> Flask:
     socketio.init_app(app)
 
     if not sched.running:
+
+        def enqueue_sync():
+            try:
+                queue.enqueue(process_unsent_events)
+            except RedisConnError:
+                logger.warning("Redis unavailable, skipping sync enqueue")
+
         sched.add_job(
-            lambda: queue.enqueue(process_unsent_events),
+            enqueue_sync,
             "interval",
             minutes=1,
             id="sync_sender",
@@ -529,8 +537,13 @@ class BotSchedule(Resource):
     @limiter.limit("5/minute")
     @role_required("operator", "admin")
     def post(self, bot_id: int):
-        job = queue.enqueue(run_bot_task, bot_id, retry=Retry(max=3))
-        return {"job_id": job.id}
+        try:
+            job = queue.enqueue(run_bot_task, bot_id, retry=Retry(max=3))
+            return {"job_id": job.id, "queued": True}
+        except RedisConnError:
+            logger.warning("Redis unavailable, running task inline")
+            run_bot_task(bot_id)
+            return {"job_id": None, "queued": False}
 
 
 @ns.route("/bots/<int:bid>/command", methods=["POST"], endpoint="bot_command")
@@ -653,6 +666,7 @@ def sync_push():
 
 def run_bot_task(bot_id: int) -> None:
     """Run a bot via subprocess for the job queue."""
+    logger.info("starting bot task %s", bot_id)
     account = Account.query.get(bot_id)
     if not account:
         return
