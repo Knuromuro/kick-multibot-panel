@@ -24,6 +24,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_talisman import Talisman
 from flask_restx import Api, Resource
+from marshmallow import Schema, fields, ValidationError
 from flask_jwt_extended import (
     JWTManager,
     create_access_token,
@@ -33,7 +34,7 @@ from flask_jwt_extended import (
     verify_jwt_in_request,
 )
 from datetime import timedelta
-from prometheus_client import Counter, Gauge, generate_latest
+from prometheus_client import Counter, Gauge, CollectorRegistry, generate_latest
 from rq import Queue, Retry
 from redis.exceptions import ConnectionError as RedisConnError
 
@@ -56,9 +57,22 @@ api = Api(doc="/docs")
 jwt = JWTManager()
 
 # Prometheus metrics
-runs_counter = Counter("bot_runs", "Number of bot executions")
-errors_counter = Counter("bot_errors", "Number of bot errors")
-running_gauge = Gauge("bots_running", "Currently running bot processes")
+registry = CollectorRegistry()
+runs_counter = Counter(
+    "bot_runs",
+    "Number of bot executions",
+    registry=registry,
+)
+errors_counter = Counter(
+    "bot_errors",
+    "Number of bot errors",
+    registry=registry,
+)
+running_gauge = Gauge(
+    "bots_running",
+    "Currently running bot processes",
+    registry=registry,
+)
 
 # Scheduler
 cfg = load_config()
@@ -74,8 +88,8 @@ _thread = Thread(target=lambda: aio_loop.run_forever(), daemon=True)
 _thread.start()
 
 # Redis queue
-redis_conn = redis.from_url(cfg.REDIS_URL or "redis://localhost:6379/0")
-queue = Queue("bots", connection=redis_conn)
+redis_conn = None
+queue = None
 
 # Database models ----------------------------------------------------------
 
@@ -118,6 +132,20 @@ class SyncEvent(db.Model):
     payload = db.Column(db.JSON)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)
     synced = db.Column(db.Boolean, default=False)
+
+
+class GroupSchema(Schema):
+    name = fields.Str(required=True)
+    target = fields.Str(required=True)
+    interval = fields.Int(load_default=600)
+
+
+class AccountSchema(Schema):
+    username = fields.Str(required=True)
+    password = fields.Str(required=True)
+    proxy = fields.Str(load_default=None)
+    messages_file = fields.Str(load_default=None)
+    group_id = fields.Int(required=True)
 
 
 # Bot and process storage --------------------------------------------------
@@ -189,6 +217,13 @@ def create_app(config: Optional[dict] = None) -> Flask:
     app.config.setdefault("LOGIN_DISABLED", bool(testing))
     init_cache(app)
     init_logging(app.config.get("SENTRY_DSN"))
+    global redis_conn, queue
+    redis_conn = redis.from_url(cfg.REDIS_URL or "redis://localhost:6379/0")
+    queue = Queue("bots", connection=redis_conn)
+    try:
+        redis_conn.ping()
+    except Exception:  # noqa: broad-except
+        logger.warning("Redis unavailable, tasks will run inline")
     csrf.init_app(app)
     csrf.exempt(api_bp)
     limiter.init_app(app)
@@ -336,13 +371,11 @@ class GroupResource(Resource):
     @limiter.limit("10/minute")
     @role_required("operator", "admin")
     def post(self):
-        data = request.get_json(silent=True) or {}
-        name = data.get("name")
-        target = data.get("target")
-        interval = data.get("interval", 600)
-        if not name or not target:
-            return {"error": "missing name or target"}, 400
-        group = Group(name=name, target=target, interval=interval)
+        try:
+            data = GroupSchema().load(request.get_json(silent=True) or {})
+        except ValidationError as err:
+            return {"errors": err.messages}, 400
+        group = Group(**data)
         try:
             with db.session.begin():
                 db.session.add(group)
@@ -388,19 +421,11 @@ class AccountResource(Resource):
     @limiter.limit("10/minute")
     @role_required("operator", "admin")
     def post(self):
-        data = request.get_json(silent=True) or {}
-        username = data.get("username")
-        password = data.get("password")
-        group_id = data.get("group_id")
-        if not username or not password or not group_id:
-            return {"error": "missing fields"}, 400
-        account = Account(
-            username=username,
-            password=password,
-            proxy=data.get("proxy"),
-            messages_file=data.get("messages_file"),
-            group_id=group_id,
-        )
+        try:
+            data = AccountSchema().load(request.get_json(silent=True) or {})
+        except ValidationError as err:
+            return {"errors": err.messages}, 400
+        account = Account(**data)
         try:
             with db.session.begin():
                 db.session.add(account)
@@ -586,7 +611,7 @@ class BotLogs(Resource):
 @api_bp.route("/metrics")
 @jwt_required(optional=True)
 def metrics():
-    data = generate_latest()
+    data = generate_latest(registry)
     return Response(data, mimetype="text/plain")
 
 
@@ -721,15 +746,18 @@ def schedule_all() -> None:
         group = Group.query.get(acc.group_id)
         if not group:
             continue
-        sched.add_job(
-            lambda aid=acc.id: asyncio.run_coroutine_threadsafe(
-                send_job(aid), aio_loop
-            ),
-            "interval",
-            seconds=group.interval,
-            id=str(acc.id),
-            replace_existing=True,
-        )
+        try:
+            sched.add_job(
+                lambda aid=acc.id: asyncio.run_coroutine_threadsafe(
+                    send_job(aid), aio_loop
+                ),
+                "interval",
+                seconds=group.interval,
+                id=str(acc.id),
+                replace_existing=True,
+            )
+        except Exception as exc:  # noqa: broad-except
+            logger.error("could not schedule job %s: %s", acc.id, exc)
 
 
 async def send_job(account_id: int) -> None:

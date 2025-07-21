@@ -27,7 +27,7 @@
     {% endif %}
     <button id="themeToggle" class="text-sm underline">Toggle theme</button>
   </div>
-  <div id="offlineBanner" class="hidden bg-red-200 p-2 mb-2" aria-live="polite">Offline mode</div>
+  <div id="offlineBanner" class="hidden bg-red-200 p-2 mb-2" role="status" aria-live="polite">Offline mode</div>
   {% block content %}{% endblock %}
   <script>
   if ('serviceWorker' in navigator) {

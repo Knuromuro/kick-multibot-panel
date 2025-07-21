@@ -4,3 +4,8 @@ instance/
 *.db
 logs/
 analytics.log
+
+# Virtualenv
+venv/
+.env/
+.venv/

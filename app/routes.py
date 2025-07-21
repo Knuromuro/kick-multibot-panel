@@ -42,10 +42,24 @@ def login():
         data = request.get_json(silent=True) or request.form
         user = data.get("username")
         password = data.get("password")
-        if user == "admin" and password == os.getenv("ADMIN_PASSWORD", "admin"):
+        if (user == "admin" and password == os.getenv("ADMIN_PASSWORD", "admin")) or (
+            user == "operator"
+            and password == os.getenv("OPERATOR_PASSWORD", "operator")
+        ):
+            secret = os.getenv("TOTP_SECRET")
+            if secret:
+                import pyotp
+
+                totp = pyotp.TOTP(secret)
+                if not totp.verify(str(data.get("totp"))):
+                    flash("Invalid token", "error")
+                    if request.is_json:
+                        return {"msg": "invalid token"}, 401
+                    return render_template("login.html"), 401
+            role = "admin" if user == "admin" else "operator"
             session["user"] = user
-            session["role"] = "admin"
-            claims = {"role": "admin"}
+            session["role"] = role
+            claims = {"role": role}
             access = create_access_token(identity=user, additional_claims=claims)
             refresh = create_refresh_token(identity=user, additional_claims=claims)
             if request.is_json:

@@ -17,6 +17,7 @@ Install dependencies and start the server:
 
 ```bash
 pip install -r requirements.txt
+pip install -r requirements-dev.txt  # optional: dev tools
 # start both the API and dashboard
 python run.py
 ```
@@ -103,7 +104,7 @@ important variables are:
 - `REDIS_URL` – Redis connection string for task queue and caching
 - `MAX_DRIVERS` – size of the Selenium WebDriver pool (default 5)
 - `JWT_SECRET_KEY` – secret used to sign access tokens
-- `TOTP_SECRET` – base32 secret for two factor login
+ - `TOTP_SECRET` – base32 secret for two factor login. When set, both the login page and `/auth/token` require a valid TOTP code.
 - `SENTRY_DSN` – optional Sentry endpoint for error reporting
 - `SLACK_WEBHOOK` – webhook URL for Slack alerts
 - `TELEGRAM_TOKEN` and `TELEGRAM_CHAT_ID` – credentials for Telegram alerts
