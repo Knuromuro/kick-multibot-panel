@@ -10,7 +10,7 @@ import time
 import sys
 from pathlib import Path
 
-from backend.app import create_app, socketio
+from backend import create_app, socketio
 
 
 PID_FILE = Path("run.pid")

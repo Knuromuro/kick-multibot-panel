@@ -3,7 +3,8 @@ from datetime import datetime
 
 import pytest
 
-from backend.app import create_app, db, Group
+from backend import create_app
+from backend.models import db, Group
 
 
 @pytest.fixture
@@ -66,7 +67,7 @@ def test_sync_fallback(tmp_path, monkeypatch):
         recorded.append(func)
         return original_add_job(func, *a, **kw)
 
-    from backend import app as backend_app
+    from backend import scheduler as backend_app
 
     original_add_job = backend_app.sched.add_job
     monkeypatch.setattr(backend_app.sched, "add_job", capture_add_job)

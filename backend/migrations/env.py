@@ -4,7 +4,7 @@ from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 from alembic import context
 import os
-import backend.app as app
+import backend as app
 
 config = context.config
 fileConfig(config.config_file_name)
