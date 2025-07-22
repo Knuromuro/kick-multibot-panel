@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
 
 from flask import Blueprint, request, current_app, Response
 from flask_restx import Api, Resource
@@ -11,14 +12,13 @@ from flask_jwt_extended import (
     get_jwt,
 )
 from marshmallow import ValidationError
-from redis.exceptions import ConnectionError as RedisConnError
-from rq import Retry
 from prometheus_client import generate_latest
 
 from shared.cache import cache
-from .models import db, Group, Account, GroupSchema, AccountSchema
+from .models import db, Group, Account, GroupSchema, AccountSchema, SyncEvent
 from .utils import role_required
-from .scheduler import sched, queue, run_bot_task, schedule_all, log_sync_event
+from . import scheduler
+from .scheduler import sched, schedule_all, log_sync_event
 
 api_bp = Blueprint("api", __name__)
 api = Api(api_bp, doc="/docs")
@@ -164,6 +164,59 @@ class AccountResource(Resource):
         return {"id": account.id, "group_id": account.group_id}, 201
 
 
+@ns.route("/bots", methods=["GET", "POST"], endpoint="bots")
+class BotListResource(Resource):
+    @jwt_required(optional=True)
+    def get(self):
+        search = (request.args.get("search") or "").strip()
+        page = int(request.args.get("page", 1))
+        per_page = int(request.args.get("per_page", 50))
+        query = Account.query
+        if search:
+            query = query.filter(Account.username.ilike(f"%{search}%"))
+        pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+        bots = []
+        for acc in pagination.items:
+            status = (
+                "online" if (Path("logs") / f"bot_{acc.id}.log").exists() else "offline"
+            )
+            bots.append(
+                {
+                    "id": acc.id,
+                    "username": acc.username,
+                    "group_id": acc.group_id,
+                    "status": status,
+                }
+            )
+        return {"items": bots, "total": pagination.total}
+
+    @role_required("operator", "admin")
+    def post(self):
+        # same as account creation for convenience
+        try:
+            data = AccountSchema().load(request.get_json(silent=True) or {})
+        except ValidationError as err:
+            return {"errors": err.messages}, 400
+        if not Group.query.get(data["group_id"]):
+            return {"error": "Invalid group_id"}, 400
+        if Account.query.filter_by(username=data["username"]).first():
+            return {"error": "account already exists"}, 400
+        account = Account(**data)
+        db.session.add(account)
+        db.session.commit()
+        log_sync_event(
+            "account",
+            "create",
+            {
+                "id": account.id,
+                "username": account.username,
+                "group_id": account.group_id,
+            },
+            current_app.extensions["socketio"],
+        )
+        return {"id": account.id, "group_id": account.group_id}, 201
+
+
 @ns.route("/scheduler/start", methods=["POST"], endpoint="scheduler_start")
 class SchedulerStart(Resource):
     @role_required("operator", "admin")
@@ -178,26 +231,128 @@ class SchedulerStart(Resource):
 class BotStart(Resource):
     @role_required("operator", "admin")
     def post(self, bot_id: int):
-        try:
-            job = queue.enqueue(
-                run_bot_task,
-                bot_id,
-                current_app.extensions["socketio"],
-                retry=Retry(max=3),
-            )
-            return {"job_id": job.id, "queued": True}
-        except RedisConnError:
-            run_bot_task(bot_id, current_app.extensions["socketio"])
-            return {"job_id": None, "queued": False}
+        group = Group.query.join(Account).filter(Account.id == bot_id).first()
+        if not group:
+            return {"error": "bot not found"}, 404
+        msg_path = Path(Account.query.get(bot_id).messages_file or "")
+        msg = "Hello from KickBot"
+        if msg_path.is_file():
+            msg = msg_path.read_text().splitlines()[0]
+        cmd = [
+            "python",
+            str(Path(__file__).resolve().parent.parent / "scripts" / "run_bot.py"),
+            "--channel",
+            group.target,
+            "--message",
+            msg,
+            "--interval",
+            str(group.interval),
+            "--token",
+            Account.query.get(bot_id).password,
+        ]
+        proc = subprocess.Popen(cmd)
+        scheduler.processes[bot_id] = proc
+        scheduler.running_gauge.inc()
+        current_app.extensions["socketio"].emit("bot_started", {"id": bot_id})
+        return {"pid": proc.pid}
+
+
+@ns.route("/bots/<int:bot_id>/stop", methods=["POST"], endpoint="bot_stop")
+class BotStop(Resource):
+    @role_required("operator", "admin")
+    def post(self, bot_id: int):
+        proc = scheduler.processes.get(bot_id)
+        if proc and proc.poll() is None:
+            proc.terminate()
+            scheduler.running_gauge.dec()
+            current_app.extensions["socketio"].emit("bot_stopped", {"id": bot_id})
+            return {"stopped": True}
+        return {"stopped": False}
 
 
 @ns.route("/bots/<int:bot_id>/status", methods=["GET"], endpoint="bot_status")
 class BotStatus(Resource):
     @jwt_required(optional=True)
     def get(self, bot_id: int):
-        path = Path("logs") / f"bot_{bot_id}.log"
-        running = path.exists()
+        proc = scheduler.processes.get(bot_id)
+        running = proc is not None and proc.poll() is None
         return {"running": running}
+
+
+@ns.route("/stats", methods=["GET"], endpoint="stats")
+class Stats(Resource):
+    @jwt_required(optional=True)
+    def get(self):
+        return {
+            "runs": int(scheduler.runs_counter._value.get()),
+            "errors": int(scheduler.errors_counter._value.get()),
+        }
+
+
+@api_bp.route("/sync/pull")
+@jwt_required(optional=True)
+def sync_pull():
+    events = SyncEvent.query.filter_by(synced=False).all()
+    data = []
+    for e in events:
+        data.append(
+            {
+                "event_id": e.event_id,
+                "entity": e.entity,
+                "action": e.action,
+                "payload": e.payload,
+                "timestamp": e.timestamp.isoformat(),
+            }
+        )
+        e.synced = True
+    db.session.commit()
+    return {"events": data}
+
+
+@api_bp.route("/sync/push", methods=["POST"])
+@jwt_required(optional=True)
+def sync_push():
+    payload = request.get_json(silent=True) or []
+    if not isinstance(payload, list):
+        return {"error": "invalid payload"}, 400
+    for item in payload:
+        if (
+            not item.get("event_id")
+            or SyncEvent.query.filter_by(event_id=item["event_id"]).first()
+        ):
+            continue
+        se = SyncEvent(
+            event_id=item["event_id"],
+            entity=item.get("entity", ""),
+            action=item.get("action", ""),
+            payload=item.get("payload"),
+            synced=True,
+        )
+        db.session.add(se)
+        if se.entity == "group" and se.action == "create":
+            if not Group.query.filter_by(name=se.payload.get("name")).first():
+                db.session.add(
+                    Group(
+                        name=se.payload.get("name"),
+                        target=se.payload.get("target"),
+                        interval=se.payload.get("interval", 600),
+                    )
+                )
+        elif se.entity == "account" and se.action == "create":
+            if not Account.query.filter_by(
+                username=se.payload.get("username")
+            ).first() and Group.query.get(se.payload.get("group_id")):
+                db.session.add(
+                    Account(
+                        username=se.payload.get("username"),
+                        password=se.payload.get("password", ""),
+                        proxy=se.payload.get("proxy"),
+                        messages_file=se.payload.get("messages_file"),
+                        group_id=se.payload.get("group_id"),
+                    )
+                )
+    db.session.commit()
+    return {"status": "ok"}
 
 
 @api_bp.route("/metrics")

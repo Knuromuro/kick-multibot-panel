@@ -21,7 +21,8 @@ from shared.config import load_config
 from shared.cache import init_cache
 from shared.logger import logger, init_logging
 from .models import db, SyncEvent
-from .scheduler import sched, queue, init_redis, process_unsent_events
+from . import scheduler
+from .scheduler import sched, process_unsent_events
 from .routes import api_bp, auth_bp
 from app.routes import register_web
 
@@ -75,7 +76,7 @@ def create_app(config: Optional[dict] = None) -> Flask:
     db.init_app(app)
     socketio.init_app(app)
 
-    init_redis()
+    scheduler.init_redis()
     app.redis_online = True
     app.config.setdefault("SYNC_FALLBACK_FILE", str(Path("sync_fallback.jsonl")))
 
@@ -83,11 +84,11 @@ def create_app(config: Optional[dict] = None) -> Flask:
 
         def enqueue_sync():
             try:
-                queue.connection.ping()
+                scheduler.queue.connection.ping()
                 fb = Path(app.config["SYNC_FALLBACK_FILE"])
                 if fb.exists():
                     fb.unlink()
-                queue.enqueue(process_unsent_events, socketio)
+                scheduler.queue.enqueue(process_unsent_events, socketio)
                 if not getattr(app, "redis_online", True):
                     socketio.emit("redis_status", {"online": True})
                 app.redis_online = True

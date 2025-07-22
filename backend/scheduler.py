@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from threading import Thread
+from threading import Thread, Timer as _Timer  # Timer re-exported for tests
 import subprocess
 from typing import Dict, Optional
 from uuid import uuid4
@@ -12,13 +12,14 @@ from rq import Queue
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask import current_app, Flask
-
 from shared.config import load_config
 from shared.logger import logger, notify_webhook
 from bots.instance import BotInstance
 from .models import db, Group, Account, Log, SyncEvent
 from flask_socketio import SocketIO
 from prometheus_client import Counter, Gauge, CollectorRegistry
+
+Timer = _Timer
 
 cfg = load_config()
 
