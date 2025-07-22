@@ -17,6 +17,7 @@ import psutil
 import redis
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
+from sqlalchemy.exc import IntegrityError
 from flask import Blueprint, Flask, Response, request, current_app, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_socketio import SocketIO
@@ -93,6 +94,7 @@ _thread.start()
 redis_conn = None
 queue = None
 redis_online = True
+APP: Optional[Flask] = None
 
 # Database models ----------------------------------------------------------
 
@@ -191,6 +193,8 @@ def create_app(config: Optional[dict] = None) -> Flask:
         static_folder=str(base_dir.parent / "app" / "static"),
         template_folder=str(base_dir.parent / "app" / "templates"),
     )
+    global APP
+    APP = app
     db_uri = os.getenv("DATABASE_URL") or f"sqlite:///{cfg.DB_PATH}"
     app.config.update(
         {
@@ -265,7 +269,8 @@ def create_app(config: Optional[dict] = None) -> Flask:
                 if getattr(app, "redis_online", True):
                     socketio.emit("redis_status", {"online": False})
                 app.redis_online = False
-                events = SyncEvent.query.filter_by(synced=False).all()
+                with app.app_context():
+                    events = SyncEvent.query.filter_by(synced=False).all()
                 fb = Path(app.config.get("SYNC_FALLBACK_FILE", SYNC_FALLBACK))
                 with fb.open("a") as fh:
                     for e in events:
@@ -281,7 +286,8 @@ def create_app(config: Optional[dict] = None) -> Flask:
                         socketio.emit("redis_status", {"online": True})
                         app.redis_online = True
                     except RedisConnError:
-                        events = SyncEvent.query.filter_by(synced=False).all()
+                        with app.app_context():
+                            events = SyncEvent.query.filter_by(synced=False).all()
                         fb = Path(app.config.get("SYNC_FALLBACK_FILE", SYNC_FALLBACK))
                         with fb.open("a") as fh:
                             for e in events:
@@ -389,9 +395,16 @@ def refresh_token():
 class GroupResource(Resource):
     @jwt_required(optional=True)
     def get(self):
-        search = request.args.get("search", "").strip()
-        page = int(request.args.get("page", 1))
-        per_page = int(request.args.get("per_page", 50))
+        search = request.args.get("search", "") or ""
+        search = search.strip()
+        try:
+            page = int(request.args.get("page", 1))
+        except (TypeError, ValueError):
+            page = 1
+        try:
+            per_page = int(request.args.get("per_page", 50))
+        except (TypeError, ValueError):
+            per_page = 50
         if not search and page == 1 and per_page == 50:
             groups = cache.get("groups")
             if groups is not None:
@@ -429,9 +442,13 @@ class GroupResource(Resource):
                     "interval": group.interval,
                 },
             )
+        except IntegrityError:
+            db.session.rollback()
+            logger.warning("duplicate group name %s", group.name)
+            return {"error": "Group with this name already exists."}, 400
         except Exception as exc:  # noqa: broad-except
             logger.warning("group creation failed: %s", exc)
-            return {"error": "group name must be unique"}, 400
+            return {"error": "could not create group"}, 400
         return {"id": group.id}, 201
 
 
@@ -439,9 +456,16 @@ class GroupResource(Resource):
 class AccountResource(Resource):
     @jwt_required(optional=True)
     def get(self):
-        search = request.args.get("search", "").strip()
-        page = int(request.args.get("page", 1))
-        per_page = int(request.args.get("per_page", 50))
+        search = request.args.get("search", "") or ""
+        search = search.strip()
+        try:
+            page = int(request.args.get("page", 1))
+        except (TypeError, ValueError):
+            page = 1
+        try:
+            per_page = int(request.args.get("per_page", 50))
+        except (TypeError, ValueError):
+            per_page = 50
         if not search and page == 1 and per_page == 50:
             accounts = cache.get("accounts")
             if accounts is not None:
@@ -739,12 +763,14 @@ def sync_push():
 def run_bot_task(bot_id: int) -> None:
     """Run a bot via subprocess for the job queue."""
     logger.info("starting bot task %s", bot_id)
-    account = Account.query.get(bot_id)
-    if not account:
-        return
-    group = Group.query.get(account.group_id)
-    if not group:
-        return
+    app = APP if APP else create_app()
+    with app.app_context():
+        account = Account.query.get(bot_id)
+        if not account:
+            return
+        group = Group.query.get(account.group_id)
+        if not group:
+            return
 
     msg = "Hello from KickBot"
     msg_path = Path(account.messages_file or "")
@@ -808,16 +834,18 @@ def schedule_all() -> None:
 
 
 async def send_job(account_id: int) -> None:
-    account = Account.query.get(account_id)
-    if not account:
-        return
-    group = Group.query.get(account.group_id)
-    if not group:
-        return
-    if account_id not in bots:
-        bots[account_id] = BotInstance(account, group)
-        bots[account_id].login()
-    bot = bots[account_id]
+    app = APP if APP else current_app
+    with app.app_context():
+        account = Account.query.get(account_id)
+        if not account:
+            return
+        group = Group.query.get(account.group_id)
+        if not group:
+            return
+        if account_id not in bots:
+            bots[account_id] = BotInstance(account, group)
+            bots[account_id].login()
+        bot = bots[account_id]
     message = "Hello from KickBot"
     msg_path = Path(account.messages_file or "").expanduser()
     if msg_path.is_file():

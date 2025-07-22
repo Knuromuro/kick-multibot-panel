@@ -87,7 +87,7 @@ async function syncPush() {
 
 async function loadGroups() {
   const q = document.getElementById('groupSearch').value;
-  const url = '/dashboard/api/groups?search=' + encodeURIComponent(q);
+  const url = q ? '/dashboard/api/groups?search=' + encodeURIComponent(q) : '/dashboard/api/groups';
   const data = await api(url);
   if (!data) return;
   const groups = data.items || data;
@@ -102,7 +102,7 @@ async function loadGroups() {
 
 async function loadAccounts() {
   const q = document.getElementById('accountSearch').value;
-  const url = '/dashboard/api/accounts?search=' + encodeURIComponent(q);
+  const url = q ? '/dashboard/api/accounts?search=' + encodeURIComponent(q) : '/dashboard/api/accounts';
   const data = await api(url);
   if (!data) return;
   const accs = data.items || data;
@@ -117,7 +117,7 @@ async function loadAccounts() {
 
 async function loadBots() {
   const q = document.getElementById('botSearch').value;
-  const url = '/dashboard/api/bots?search=' + encodeURIComponent(q);
+  const url = q ? '/dashboard/api/bots?search=' + encodeURIComponent(q) : '/dashboard/api/bots';
   const data = await api(url);
   if (!data) return;
   const bots = data.items || data;
@@ -162,9 +162,19 @@ async function fetchLogs(id) {
 
 document.getElementById('addGroupBtn').addEventListener('click', () => openModal('groupModal'));
 document.getElementById('addAccountBtn').addEventListener('click', () => openModal('accountModal'));
-document.getElementById('groupSearch').addEventListener('input', loadGroups);
-document.getElementById('accountSearch').addEventListener('input', loadAccounts);
-document.getElementById('botSearch').addEventListener('input', loadBots);
+let groupTimer, accountTimer, botTimer;
+document.getElementById('groupSearch').addEventListener('input', () => {
+  clearTimeout(groupTimer);
+  groupTimer = setTimeout(loadGroups, 300);
+});
+document.getElementById('accountSearch').addEventListener('input', () => {
+  clearTimeout(accountTimer);
+  accountTimer = setTimeout(loadAccounts, 300);
+});
+document.getElementById('botSearch').addEventListener('input', () => {
+  clearTimeout(botTimer);
+  botTimer = setTimeout(loadBots, 300);
+});
 
 document.getElementById('groupForm').addEventListener('submit', async e => {
   e.preventDefault();
