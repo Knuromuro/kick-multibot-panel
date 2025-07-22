@@ -231,6 +231,7 @@ def create_app(config: Optional[dict] = None) -> Flask:
     try:
         redis_conn.ping()
         redis_online = True
+        logger.info("Connected to Redis")
     except Exception:  # noqa: broad-except
         redis_online = False
         logger.warning("Redis unavailable, tasks will run inline")
@@ -396,8 +397,7 @@ def refresh_token():
 class GroupResource(Resource):
     @jwt_required(optional=True)
     def get(self):
-        search = request.args.get("search", "") or ""
-        search = search.strip()
+        search = (request.args.get("search") or "").strip()
         try:
             page = int(request.args.get("page", 1))
         except (TypeError, ValueError):
@@ -437,10 +437,13 @@ class GroupResource(Resource):
             data = GroupSchema().load(request.get_json(silent=True) or {})
         except ValidationError as err:
             return {"errors": err.messages}, 400
+        if Group.query.filter_by(name=data["name"]).first():
+            logger.warning("duplicate group name %s", data["name"])
+            return {"error": "Group name already exists."}, 400
         group = Group(**data)
         try:
-            with db.session.begin():
-                db.session.add(group)
+            db.session.add(group)
+            db.session.commit()
             log_sync_event(
                 "group",
                 "create",
@@ -454,10 +457,11 @@ class GroupResource(Resource):
         except IntegrityError:
             db.session.rollback()
             logger.warning("duplicate group name %s", group.name)
-            return {"error": "Group with this name already exists."}, 400
+            return {"error": "Group name already exists."}, 400
         except Exception as exc:  # noqa: broad-except
             logger.warning("group creation failed: %s", exc)
             return {"error": "could not create group"}, 400
+        logger.info("created group %s", group.name)
         return {"id": group.id}, 201
 
 
@@ -465,8 +469,7 @@ class GroupResource(Resource):
 class AccountResource(Resource):
     @jwt_required(optional=True)
     def get(self):
-        search = request.args.get("search", "") or ""
-        search = search.strip()
+        search = (request.args.get("search") or "").strip()
         try:
             page = int(request.args.get("page", 1))
         except (TypeError, ValueError):
@@ -502,7 +505,7 @@ class AccountResource(Resource):
         group = Group.query.get(data["group_id"])
         if not group:
             logger.warning("invalid group id %s", data["group_id"])
-            return {"error": "group not found"}, 400
+            return {"error": "Invalid group_id"}, 400
         if Account.query.filter_by(username=data["username"]).first():
             return {"error": "account already exists"}, 400
         account = Account(**data)
@@ -542,7 +545,7 @@ class SchedulerStart(Resource):
 class BotList(Resource):
     @jwt_required(optional=True)
     def get(self):
-        search = request.args.get("search", "").strip()
+        search = (request.args.get("search") or "").strip()
         page = int(request.args.get("page", 1))
         per_page = int(request.args.get("per_page", 50))
         query = Account.query
