@@ -53,6 +53,20 @@ def test_create_account(client):
     data = res.get_json()
     assert any(a["id"] == aid for a in data["items"]) and data["total"] == 1
 
+    # creating via /bots endpoint
+    res = client.post(
+        "/dashboard/api/bots",
+        json={"username": "userb", "password": "pass", "group_id": gid},
+    )
+    assert res.status_code == 201
+
+    # invalid group
+    res = client.post(
+        "/dashboard/api/accounts",
+        json={"username": "bad", "password": "p", "group_id": 9999},
+    )
+    assert res.status_code == 400
+
 
 def test_stats_endpoint(client):
     res = client.get("/dashboard/api/stats")

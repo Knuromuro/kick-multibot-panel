@@ -105,16 +105,17 @@ class Group(db.Model):
     name = db.Column(db.String(80), unique=True, nullable=False, index=True)
     target = db.Column(db.String(80), nullable=False, index=True)
     interval = db.Column(db.Integer, default=600)
+    accounts = db.relationship("Account", backref="group", lazy=True)
 
 
 class Account(db.Model):
     __tablename__ = "accounts"
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(120), nullable=False, index=True)
+    username = db.Column(db.String(120), unique=True, nullable=False, index=True)
     password = db.Column(db.String(120), nullable=False)
     proxy = db.Column(db.String(200))
     messages_file = db.Column(db.String(200))
-    group_id = db.Column(db.Integer, db.ForeignKey("groups.id"))
+    group_id = db.Column(db.Integer, db.ForeignKey("groups.id"), nullable=False)
 
 
 class Log(db.Model):
@@ -413,12 +414,20 @@ class GroupResource(Resource):
         if search:
             query = query.filter(Group.name.ilike(f"%{search}%"))
         pagination = query.paginate(page=page, per_page=per_page, error_out=False)
-        groups = [
-            {"id": g.id, "name": g.name, "target": g.target, "interval": g.interval}
-            for g in pagination.items
-        ]
+        groups = []
+        for g in pagination.items:
+            groups.append(
+                {
+                    "id": g.id,
+                    "name": g.name,
+                    "target": g.target,
+                    "interval": g.interval,
+                    "bots": [{"id": a.id, "username": a.username} for a in g.accounts],
+                }
+            )
         if not search and page == 1 and per_page == 50:
             cache.set("groups", groups, timeout=60)
+        logger.info("fetched groups list")
         return {"items": groups, "total": pagination.total}
 
     @limiter.limit("10/minute")
@@ -480,6 +489,7 @@ class AccountResource(Resource):
         ]
         if not search and page == 1 and per_page == 50:
             cache.set("accounts", accounts, timeout=60)
+        logger.info("fetched accounts list")
         return {"items": accounts, "total": pagination.total}
 
     @limiter.limit("10/minute")
@@ -489,10 +499,16 @@ class AccountResource(Resource):
             data = AccountSchema().load(request.get_json(silent=True) or {})
         except ValidationError as err:
             return {"errors": err.messages}, 400
+        group = Group.query.get(data["group_id"])
+        if not group:
+            logger.warning("invalid group id %s", data["group_id"])
+            return {"error": "group not found"}, 400
+        if Account.query.filter_by(username=data["username"]).first():
+            return {"error": "account already exists"}, 400
         account = Account(**data)
         try:
-            with db.session.begin():
-                db.session.add(account)
+            db.session.add(account)
+            db.session.commit()
             log_sync_event(
                 "account",
                 "create",
@@ -504,8 +520,10 @@ class AccountResource(Resource):
             )
         except Exception as exc:  # noqa: broad-except
             logger.warning("account creation failed: %s", exc)
+            db.session.rollback()
             return {"error": "could not create account"}, 400
-        return {"id": account.id}, 201
+        logger.info("created account %s in group %s", account.username, group.name)
+        return {"id": account.id, "group_id": account.group_id}, 201
 
 
 @ns.route("/scheduler/start", methods=["POST"], endpoint="scheduler_start")
@@ -520,7 +538,7 @@ class SchedulerStart(Resource):
         return {"status": "started"}
 
 
-@ns.route("/bots", methods=["GET"], endpoint="bot_list")
+@ns.route("/bots", methods=["GET", "POST"], endpoint="bot_list")
 class BotList(Resource):
     @jwt_required(optional=True)
     def get(self):
@@ -530,6 +548,12 @@ class BotList(Resource):
         query = Account.query
         if search:
             query = query.filter(Account.username.ilike(f"%{search}%"))
+        if request.args.get("group_id"):
+            try:
+                gid = int(request.args.get("group_id"))
+                query = query.filter_by(group_id=gid)
+            except ValueError:
+                pass
         pagination = query.paginate(page=page, per_page=per_page, error_out=False)
         result = []
         for acc in pagination.items:
@@ -537,8 +561,54 @@ class BotList(Resource):
             bot = bots.get(acc.id)
             if bot and bot.ws and not bot.ws.closed:
                 status = "online"
-            result.append({"id": acc.id, "username": acc.username, "status": status})
+            result.append(
+                {
+                    "id": acc.id,
+                    "username": acc.username,
+                    "group_id": acc.group_id,
+                    "group": acc.group.name if acc.group else None,
+                    "status": status,
+                }
+            )
+        logger.info("fetched bots list")
         return {"items": result, "total": pagination.total}
+
+    @limiter.limit("10/minute")
+    @role_required("operator", "admin")
+    def post(self):
+        try:
+            data = AccountSchema().load(request.get_json(silent=True) or {})
+        except ValidationError as err:
+            return {"errors": err.messages}, 400
+        group = Group.query.get(data["group_id"])
+        if not group:
+            logger.warning("invalid group id %s", data["group_id"])
+            return {"error": "group not found"}, 400
+        if Account.query.filter_by(username=data["username"]).first():
+            return {"error": "account already exists"}, 400
+        account = Account(**data)
+        try:
+            db.session.add(account)
+            db.session.commit()
+            log_sync_event(
+                "account",
+                "create",
+                {
+                    "id": account.id,
+                    "username": account.username,
+                    "group_id": account.group_id,
+                },
+            )
+        except Exception as exc:  # noqa: broad-except
+            logger.warning("account creation failed: %s", exc)
+            db.session.rollback()
+            return {"error": "could not create account"}, 400
+        logger.info("created account %s in group %s", account.username, group.name)
+        return {
+            "id": account.id,
+            "username": account.username,
+            "group_id": account.group_id,
+        }, 201
 
 
 # Bot process management ---------------------------------------------------

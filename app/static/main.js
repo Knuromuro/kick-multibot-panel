@@ -95,7 +95,18 @@ async function loadGroups() {
   list.innerHTML = '';
   groups.forEach(g => {
     const li = document.createElement('li');
-    li.textContent = `${g.name} (${g.target})`;
+    li.className = 'mb-1';
+    li.innerHTML = `<div class="font-semibold">${g.name} (${g.target})</div>`;
+    if (g.bots && g.bots.length) {
+      const ul = document.createElement('ul');
+      ul.className = 'pl-4 list-disc';
+      g.bots.forEach(b => {
+        const bi = document.createElement('li');
+        bi.textContent = `${b.username} (#${b.id})`;
+        ul.appendChild(bi);
+      });
+      li.appendChild(ul);
+    }
     list.appendChild(li);
   });
 }
@@ -225,6 +236,7 @@ document.getElementById('accountForm').addEventListener('submit', async e => {
     alert(res.error);
   } else {
     loadAccounts();
+    loadBots();
     closeModal('accountModal');
     syncPush();
   }
