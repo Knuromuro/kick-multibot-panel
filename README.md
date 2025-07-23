@@ -1,143 +1,83 @@
 # KickBot Manager
 
-KickBot Manager is a lightweight dashboard for controlling chat bots on [Kick.com](https://kick.com). It combines a Flask backend with a simple Tailwind based frontend. Bots connect to Kick chat via WebSocket and can be scheduled or commanded from the web panel.
+KickBot Manager is a Flask-based dashboard for running chat bots on [Kick.com](https://kick.com). It controls Selenium bots that connect to Kick chat via WebSocket and lets you manage groups of accounts, schedule messages and view logs in real time. If Redis is unavailable the app falls back to an in-memory queue so bots continue to run.
 
-## Features
+## Architecture
 
-- Manage groups and accounts stored in a SQLite database
-- Start an asynchronous scheduler that sends messages from accounts to their group's target
-- Issue commands to running bots: send a message, check status, restart connection or capture a screenshot
-- View the last 50 log lines per bot
-- Search and filter bots or groups right from the dashboard
-- Dark mode toggle and offline indicator
-- Toast notifications for success and error feedback
-- Start or stop individual bots directly from the dashboard
+- **backend/** – Flask API, SQLAlchemy models and APScheduler jobs
+- **bots/** – Selenium bot runner and helpers
+- **app/templates** & **app/static** – Tailwind dashboard and JavaScript logic
+- **shared/** – configuration loader, caching and logging utilities
 
-## Setup
+Bots belong to `Account` records which are linked to a `Group`. Each group has a target channel and interval for sending messages.
 
-Install dependencies and start the server:
+## Installation & Setup
+
+Requirements:
+- Python 3.10+
+- Google Chrome and chromedriver
+- Redis (optional)
 
 ```bash
+git clone <repo>
+cd kick-multibot-panel
 pip install -r requirements.txt
-pip install -r requirements-dev.txt  # optional: dev tools
-# start both the API and dashboard
+```
+
+Create a `.env` file based on `.env.example` and set values like `SECRET_KEY`, `DATABASE_URL`, `REDIS_URL` and Kick credentials.
+
+## Running the Application
+
+Start the server in development mode:
+
+```bash
 python run.py
 ```
 
-Log in at `/login` using the default credentials (**admin/admin**). A session
-cookie will be created and the response also includes JWT access and refresh
-tokens which the page stores in `localStorage`. API requests automatically
-refresh the token when a `401 Unauthorized` response is received.
+Visit `http://127.0.0.1:5000/dashboard` to log in and use the panel.
 
-If `TOTP_SECRET` is set, the login form will ask for a time based one time
-password.
+For production use a WSGI server such as Gunicorn behind Nginx or run the provided Docker container.
 
-The server writes unsent sync events to `sync_fallback.jsonl` if Redis is down
-and drains the file once the connection recovers. The dashboard shows a "Redis
-Offline" banner whenever this fallback is active.
+## Using the Dashboard
 
-Obtain an access token via:
+1. Log in with the admin credentials or via OAuth if configured.
+2. Create a **group** with a target channel and sending interval.
+3. Add **accounts** to the group.
+4. Start the scheduler or individual bots using the buttons on the page.
+5. View live logs and bot status. Search boxes filter groups and bots without errors when empty.
 
-```bash
-curl -X POST http://localhost:5000/auth/token -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin","totp":"<code>"}'
-```
+## API Endpoints
 
-Use the returned `access_token` in the `Authorization` header as `Bearer <token>` for API calls.
-
-The dashboard is a PWA. A service worker caches pages and API responses and uses
-Background Sync to POST queued actions to `/sync/push` when connectivity
-returns. Click the **Sync Now** button to force a flush while offline.
-
-Run the tests (including a headless browser end-to-end check):
-
-```bash
-PYTHONPATH=. pytest -q
-```
-The end-to-end test uses Selenium with headless Chrome. Ensure `chromedriver`
-is installed and available on the system path when running tests.
-
-The panel uses CSRF protection. A token is included in a `<meta>` tag and
-automatically sent with API requests by `main.js`.
-Newly created groups and accounts now appear on the dashboard immediately.
-
-### API endpoints
-
+- `GET /dashboard/api/groups` – list groups
 - `POST /dashboard/api/groups` – create a group
+- `GET /dashboard/api/accounts` – list accounts
 - `POST /dashboard/api/accounts` – create an account
+- `GET /dashboard/api/bots` – list bots
 - `POST /dashboard/api/bots/<id>/start` – start a bot
 - `POST /dashboard/api/bots/<id>/stop` – stop a bot
-- `GET  /dashboard/api/bots/<id>/status` – check if a bot is running
-- `GET  /dashboard/api/bots/<id>/logs` – last 50 log lines for a bot
+- `GET /dashboard/api/bots/<id>/logs` – recent log lines
 
-### Docker
+## Redis Fallback
 
-Run with PostgreSQL and Redis using Docker Compose:
+Redis is optional. When Redis cannot be reached the server logs a warning only once and runs scheduled tasks inline. Pending sync events are written to `sync_fallback.jsonl` and replayed once Redis is back online.
 
-```bash
-docker-compose up --build
-```
+## Security & Best Practices
 
-For Kubernetes deployments a basic Helm chart is provided under `helm/kickbot`:
+- Login returns JWTs which the dashboard stores in HttpOnly cookies.
+- Requests are rate limited and protected by CSRF.
+- Store hashed passwords in environment variables instead of plain text.
 
-```bash
-helm install kickbot helm/kickbot
-```
+## Future Improvements
 
-### Documentation
+- Scale to thousands of bots
+- Better CAPTCHA handling during login
+- More detailed UI feedback and metrics
 
-The API exposes OpenAPI docs at `/docs`. Developer documentation can be served with `mkdocs serve`.
-
-During development you can also run the backend module directly:
+## Quick Start for New Developers
 
 ```bash
-python backend/app.py
+pip install -r requirements.txt
+python run.py
 ```
 
-Login at `http://localhost:5000/login` with **admin/admin**. If `TOTP_SECRET` is
-set, provide the current one-time password.
-
-### Environment variables
-
-Configuration values are loaded from `.env` via `shared.config`. The most
-important variables are:
-
-- `PORT` – server port (default 5000)
-- `DB_PATH` – SQLite file (default `bots.db`)
-- `SECRET_KEY` – Flask secret key
-- `WORKERS` – scheduler thread pool size (default 50)
-- `MAX_INSTANCES` – maximum concurrent scheduled jobs (default 50)
-- `KICK_WS_URI` – WebSocket endpoint for Kick chat
-- `REDIS_URL` – Redis connection string for task queue and caching
-- `MAX_DRIVERS` – size of the Selenium WebDriver pool (default 5)
-- `JWT_SECRET_KEY` – secret used to sign access tokens
-- `TOTP_SECRET` – base32 secret for two factor login. When set, both the login page and `/auth/token` require a valid TOTP code.
-- `ADMIN_PASSWORD_HASH` – bcrypt hash for the admin password (overrides `ADMIN_PASSWORD`)
-- `OPERATOR_PASSWORD_HASH` – bcrypt hash for the operator password (overrides `OPERATOR_PASSWORD`)
-- `SENTRY_DSN` – optional Sentry endpoint for error reporting
-- `SLACK_WEBHOOK` – webhook URL for Slack alerts
-- `TELEGRAM_TOKEN` and `TELEGRAM_CHAT_ID` – credentials for Telegram alerts
-
-The backend exposes Prometheus metrics at `/metrics` and uses Redis + RQ for background jobs.
-If Redis is unreachable, jobs run inline so scheduled tasks continue to work.
-It also provides `/sync/pull` and `/sync/push` for two-way event synchronization.
-Errors can optionally be reported to Sentry or Slack/Telegram via the environment
-variables `SENTRY_DSN`, `SLACK_WEBHOOK`, `TELEGRAM_TOKEN` and `TELEGRAM_CHAT_ID`.
-
-## Usage
-
-1. Create a group with a target channel and interval.
-   Group names must be unique; duplicate names will return an error.
-2. Add accounts pointing to that group. Each account may specify a messages file with text to send.
-3. Click **Start Scheduler** to begin automated sending. Bots run in batches and reconnect on failure.
-4. Use the command button next to a bot to send manual messages or request a screenshot.
-
-Logs are stored under `logs/` with one file per bot.
-
-The dashboard is a Progressive Web App and can be installed on mobile. It uses WebSocket updates and push notifications when bots start or stop. Offline changes are queued locally and synchronized once connectivity returns.
-
-### Mobile screenshots
-
-Below is an example of the mobile layout. The sidebar collapses into a hamburger menu and all controls remain accessible.
-
-![dashboard mobile](docs/index.md)
+Open your browser at `http://127.0.0.1:5000/dashboard` and start creating groups and bots.
