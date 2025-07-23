@@ -15,6 +15,7 @@ from marshmallow import ValidationError
 from prometheus_client import generate_latest
 
 from shared.cache import cache
+from shared.logger import logger
 from .models import db, Group, Account, GroupSchema, AccountSchema, SyncEvent
 from .utils import role_required
 from . import scheduler
@@ -75,9 +76,9 @@ class GroupResource(Resource):
         page = int(request.args.get("page", 1))
         per_page = int(request.args.get("per_page", 50))
         if not search and page == 1 and per_page == 50:
-            groups = cache.get("groups")
-            if groups is not None:
-                return groups
+            cached = cache.get("groups")
+            if cached is not None:
+                return cached
         query = Group.query
         if search:
             query = query.filter(Group.name.ilike(f"%{search}%"))
@@ -92,17 +93,20 @@ class GroupResource(Resource):
             }
             for g in pagination.items
         ]
+        result = {"items": groups, "total": pagination.total}
         if not search and page == 1 and per_page == 50:
-            cache.set("groups", groups, timeout=60)
-        return {"items": groups, "total": pagination.total}
+            cache.set("groups", result, timeout=60)
+        return result
 
     @role_required("operator", "admin")
     def post(self):
         try:
             data = GroupSchema().load(request.get_json(silent=True) or {})
         except ValidationError as err:
+            logger.warning("invalid group payload: %s", err.messages)
             return {"errors": err.messages}, 400
         if Group.query.filter_by(name=data["name"]).first():
+            logger.warning("duplicate group name %s", data["name"])
             return {"error": "Group name already exists."}, 400
         group = Group(**data)
         db.session.add(group)
@@ -110,7 +114,9 @@ class GroupResource(Resource):
             db.session.commit()
         except Exception:
             db.session.rollback()
+            logger.error("database error creating group", exc_info=True)
             return {"error": "database error"}, 400
+        logger.info("created group %s", group.name)
         log_sync_event(
             "group",
             "create",
@@ -147,10 +153,17 @@ class AccountResource(Resource):
         try:
             data = AccountSchema().load(request.get_json(silent=True) or {})
         except ValidationError as err:
+            logger.warning("invalid account payload: %s", err.messages)
             return {"errors": err.messages}, 400
-        if not Group.query.get(data["group_id"]):
+        group_id = data.get("group_id")
+        group = Group.query.get(group_id)
+        if not group:
+            logger.warning(
+                "invalid group_id %s for account %s", group_id, data.get("username")
+            )
             return {"error": "Invalid group_id"}, 400
         if Account.query.filter_by(username=data["username"]).first():
+            logger.warning("duplicate account username %s", data["username"])
             return {"error": "account already exists"}, 400
         account = Account(**data)
         db.session.add(account)
@@ -158,7 +171,9 @@ class AccountResource(Resource):
             db.session.commit()
         except Exception:
             db.session.rollback()
+            logger.error("database error creating account", exc_info=True)
             return {"error": "database error"}, 400
+        logger.info("created account %s in group %s", account.username, group_id)
         log_sync_event(
             "account",
             "create",

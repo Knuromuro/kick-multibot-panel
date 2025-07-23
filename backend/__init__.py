@@ -90,11 +90,12 @@ def create_app(config: Optional[dict] = None) -> Flask:
                     fb.unlink()
                 scheduler.queue.enqueue(process_unsent_events, socketio)
                 if not getattr(app, "redis_online", True):
+                    logger.info("Redis connection restored")
                     socketio.emit("redis_status", {"online": True})
                 app.redis_online = True
             except RedisConnError:
-                logger.warning("Redis unavailable, deferring sync")
                 if getattr(app, "redis_online", True):
+                    logger.warning("Redis unavailable, deferring sync")
                     socketio.emit("redis_status", {"online": False})
                 app.redis_online = False
                 with app.app_context():
