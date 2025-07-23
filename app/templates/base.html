@@ -29,6 +29,7 @@
   </div>
   <div id="offlineBanner" class="hidden bg-red-200 p-2 mb-2" role="status" aria-live="polite">Offline mode</div>
   <div id="redisBanner" class="hidden bg-yellow-200 p-2 mb-2" role="status" aria-live="polite">Redis offline</div>
+  <div id="toast" class="fixed top-4 right-4 bg-green-500 text-white px-3 py-2 rounded shadow hidden"></div>
   {% block content %}{% endblock %}
   <script>
   if ('serviceWorker' in navigator) {

@@ -20,3 +20,7 @@ table th {
   background-color: var(--bg);
   color: var(--fg);
 }
+
+#toast {
+  transition: opacity 0.3s ease;
+}

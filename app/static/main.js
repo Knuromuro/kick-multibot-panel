@@ -1,6 +1,7 @@
 const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
 const spinner = document.getElementById('spinner');
 const redisBanner = document.getElementById('redisBanner');
+const toastBox = document.getElementById('toast');
 let chart;
 
 function loadQueue() {
@@ -13,6 +14,13 @@ function saveQueue(q) {
 
 function showSpinner() { spinner.classList.remove('hidden'); }
 function hideSpinner() { spinner.classList.add('hidden'); }
+function showToast(msg, ok = true) {
+  toastBox.textContent = msg;
+  toastBox.classList.remove('hidden');
+  toastBox.classList.toggle('bg-red-500', !ok);
+  toastBox.classList.toggle('bg-green-500', ok);
+  setTimeout(() => toastBox.classList.add('hidden'), 3000);
+}
 
 async function checkRedis() {
   const res = await fetch('/dashboard/api/status').catch(() => null);
@@ -86,8 +94,8 @@ async function syncPush() {
 }
 
 async function loadGroups() {
-  const q = document.getElementById('groupSearch').value;
-  const url = q ? '/dashboard/api/groups?search=' + encodeURIComponent(q) : '/dashboard/api/groups';
+  const q = document.getElementById('groupSearch').value.trim();
+  const url = q.length > 1 ? '/dashboard/api/groups?search=' + encodeURIComponent(q) : '/dashboard/api/groups';
   const data = await api(url);
   if (!data) return;
   const groups = data.items || data;
@@ -112,8 +120,8 @@ async function loadGroups() {
 }
 
 async function loadAccounts() {
-  const q = document.getElementById('accountSearch').value;
-  const url = q ? '/dashboard/api/accounts?search=' + encodeURIComponent(q) : '/dashboard/api/accounts';
+  const q = document.getElementById('accountSearch').value.trim();
+  const url = q.length > 1 ? '/dashboard/api/accounts?search=' + encodeURIComponent(q) : '/dashboard/api/accounts';
   const data = await api(url);
   if (!data) return;
   const accs = data.items || data;
@@ -127,8 +135,8 @@ async function loadAccounts() {
 }
 
 async function loadBots() {
-  const q = document.getElementById('botSearch').value;
-  const url = q ? '/dashboard/api/bots?search=' + encodeURIComponent(q) : '/dashboard/api/bots';
+  const q = document.getElementById('botSearch').value.trim();
+  const url = q.length > 1 ? '/dashboard/api/bots?search=' + encodeURIComponent(q) : '/dashboard/api/bots';
   const data = await api(url);
   if (!data) return;
   const bots = data.items || data;
@@ -139,8 +147,12 @@ async function loadBots() {
     let color = 'bg-red-200';
     if (b.status === 'online') color = 'bg-green-200';
     else if (b.status === 'queued') color = 'bg-yellow-200';
-    div.className = `${color} p-2`;
-    div.innerHTML = `ID ${b.id} (${b.username}) - ${b.status} <button onclick="openCmd(${b.id})" class="bg-blue-500 text-white px-1">Cmd</button> <button onclick="fetchLogs(${b.id})" class="text-sm underline">Logs</button>`;
+    div.className = `${color} p-2 space-x-1`;
+    div.innerHTML = `ID ${b.id} (${b.username}) - ${b.status}
+      <button onclick="startBot(${b.id})" class="bg-green-500 text-white px-1">Start</button>
+      <button onclick="stopBot(${b.id})" class="bg-red-500 text-white px-1">Stop</button>
+      <button onclick="openCmd(${b.id})" class="bg-blue-500 text-white px-1">Cmd</button>
+      <button onclick="fetchLogs(${b.id})" class="text-sm underline">Logs</button>`;
     container.appendChild(div);
   });
 }
@@ -165,6 +177,18 @@ async function startScheduler() {
   await api('/dashboard/api/scheduler/start', {method: 'POST'});
 }
 
+async function startBot(id) {
+  const res = await api(`/dashboard/api/bots/${id}/start`, {method: 'POST'});
+  if (res && res.pid) showToast('Bot started');
+  loadBots();
+}
+
+async function stopBot(id) {
+  const res = await api(`/dashboard/api/bots/${id}/stop`, {method: 'POST'});
+  if (res && res.stopped) showToast('Bot stopped');
+  loadBots();
+}
+
 async function fetchLogs(id) {
   const logs = await api(`/dashboard/api/bots/${id}/logs`);
   if (!logs) return;
@@ -176,15 +200,24 @@ document.getElementById('addAccountBtn').addEventListener('click', () => openMod
 let groupTimer, accountTimer, botTimer;
 document.getElementById('groupSearch').addEventListener('input', () => {
   clearTimeout(groupTimer);
-  groupTimer = setTimeout(loadGroups, 300);
+  groupTimer = setTimeout(() => {
+    const q = document.getElementById('groupSearch').value.trim();
+    if (q.length === 0 || q.length > 1) loadGroups();
+  }, 300);
 });
 document.getElementById('accountSearch').addEventListener('input', () => {
   clearTimeout(accountTimer);
-  accountTimer = setTimeout(loadAccounts, 300);
+  accountTimer = setTimeout(() => {
+    const q = document.getElementById('accountSearch').value.trim();
+    if (q.length === 0 || q.length > 1) loadAccounts();
+  }, 300);
 });
 document.getElementById('botSearch').addEventListener('input', () => {
   clearTimeout(botTimer);
-  botTimer = setTimeout(loadBots, 300);
+  botTimer = setTimeout(() => {
+    const q = document.getElementById('botSearch').value.trim();
+    if (q.length === 0 || q.length > 1) loadBots();
+  }, 300);
 });
 
 document.getElementById('groupForm').addEventListener('submit', async e => {
@@ -203,13 +236,14 @@ document.getElementById('groupForm').addEventListener('submit', async e => {
     const q = loadQueue();
     q.push({entity: 'group', action: 'create', payload: data, timestamp: new Date().toISOString()});
     saveQueue(q);
-    alert('Queued offline');
+    showToast('Queued offline', true);
   } else if (res.error) {
-    alert(res.error);
+    showToast(res.error, false);
   } else {
     loadGroups();
     closeModal('groupModal');
     syncPush();
+    showToast('Group created');
   }
 });
 
@@ -231,14 +265,15 @@ document.getElementById('accountForm').addEventListener('submit', async e => {
     const q = loadQueue();
     q.push({entity: 'account', action: 'create', payload: data, timestamp: new Date().toISOString()});
     saveQueue(q);
-    alert('Queued offline');
+    showToast('Queued offline', true);
   } else if (res.error) {
-    alert(res.error);
+    showToast(res.error, false);
   } else {
     loadAccounts();
     loadBots();
     closeModal('accountModal');
     syncPush();
+    showToast('Account created');
   }
 });
 
@@ -257,7 +292,9 @@ document.getElementById('cmdForm').addEventListener('submit', async e => {
     const q = loadQueue();
     q.push({entity: 'bot', action: cmd, payload: {id: id, args: args}, timestamp: new Date().toISOString()});
     saveQueue(q);
-    alert('Queued offline');
+    showToast('Queued offline', true);
+  } else if (res && res.status === 'ok') {
+    showToast('Command queued');
   }
   closeCmd();
   fetchLogs(id);

@@ -106,7 +106,11 @@ class GroupResource(Resource):
             return {"error": "Group name already exists."}, 400
         group = Group(**data)
         db.session.add(group)
-        db.session.commit()
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            return {"error": "database error"}, 400
         log_sync_event(
             "group",
             "create",
@@ -150,7 +154,11 @@ class AccountResource(Resource):
             return {"error": "account already exists"}, 400
         account = Account(**data)
         db.session.add(account)
-        db.session.commit()
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            return {"error": "database error"}, 400
         log_sync_event(
             "account",
             "create",
@@ -203,7 +211,11 @@ class BotListResource(Resource):
             return {"error": "account already exists"}, 400
         account = Account(**data)
         db.session.add(account)
-        db.session.commit()
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            return {"error": "database error"}, 400
         log_sync_event(
             "account",
             "create",
