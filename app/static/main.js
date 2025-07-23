@@ -3,6 +3,7 @@ const spinner = document.getElementById('spinner');
 const redisBanner = document.getElementById('redisBanner');
 const toastBox = document.getElementById('toast');
 let chart;
+let logTimer = null;
 
 function loadQueue() {
   return JSON.parse(localStorage.getItem('syncQueue') || '[]');
@@ -190,9 +191,15 @@ async function stopBot(id) {
 }
 
 async function fetchLogs(id) {
-  const logs = await api(`/dashboard/api/bots/${id}/logs`);
-  if (!logs) return;
-  document.getElementById('logBox').textContent = logs.join('\n');
+  if (logTimer) clearInterval(logTimer);
+  async function load() {
+    const lines = await api(`/dashboard/api/bots/${id}/logs`);
+    if (lines) {
+      document.getElementById('logBox').textContent = lines.join('\n');
+    }
+  }
+  await load();
+  logTimer = setInterval(load, 3000);
 }
 
 document.getElementById('addGroupBtn').addEventListener('click', () => openModal('groupModal'));

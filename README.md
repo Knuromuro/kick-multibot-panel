@@ -68,6 +68,7 @@ Newly created groups and accounts now appear on the dashboard immediately.
 - `POST /dashboard/api/bots/<id>/start` – start a bot
 - `POST /dashboard/api/bots/<id>/stop` – stop a bot
 - `GET  /dashboard/api/bots/<id>/status` – check if a bot is running
+- `GET  /dashboard/api/bots/<id>/logs` – last 50 log lines for a bot
 
 ### Docker
 

@@ -311,6 +311,19 @@ class BotStatus(Resource):
         return {"running": running}
 
 
+@ns.route("/bots/<int:bot_id>/logs", methods=["GET"], endpoint="bot_logs")
+class BotLogs(Resource):
+    """Return last 50 log lines for a bot."""
+
+    @jwt_required(optional=True)
+    def get(self, bot_id: int):
+        log_path = Path("logs") / f"bot_{bot_id}.log"
+        if not log_path.exists():
+            return []
+        lines = log_path.read_text(errors="ignore").splitlines()[-50:]
+        return lines
+
+
 @ns.route("/stats", methods=["GET"], endpoint="stats")
 class Stats(Resource):
     @jwt_required(optional=True)
