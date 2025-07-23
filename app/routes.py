@@ -11,6 +11,7 @@ from flask import (
     current_app,
     jsonify,
 )
+import bcrypt
 from flask_jwt_extended import verify_jwt_in_request
 from authlib.integrations.flask_client import OAuth
 
@@ -45,9 +46,20 @@ def login_post():
     data = request.form
     user = data.get("username")
     password = data.get("password")
-    if (user == "admin" and password == os.getenv("ADMIN_PASSWORD", "admin")) or (
-        user == "operator" and password == os.getenv("OPERATOR_PASSWORD", "operator")
-    ):
+
+    valid = False
+    if user in {"admin", "operator"}:
+        hashed = os.getenv(f"{user.upper()}_PASSWORD_HASH")
+        if hashed:
+            try:
+                valid = bcrypt.checkpw(password.encode(), hashed.encode())
+            except Exception:
+                valid = False
+        else:
+            env_plain = os.getenv(f"{user.upper()}_PASSWORD", user)
+            valid = password == env_plain
+
+    if valid:
         secret = os.getenv("TOTP_SECRET")
         if secret:
             import pyotp

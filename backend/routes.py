@@ -20,6 +20,7 @@ from .models import db, Group, Account, GroupSchema, AccountSchema, SyncEvent
 from .utils import role_required
 from . import scheduler
 from .scheduler import sched, schedule_all, log_sync_event
+import bcrypt
 
 api_bp = Blueprint("api", __name__)
 api = Api(api_bp, doc="/docs")
@@ -35,15 +36,19 @@ def get_token():
     password = data.get("password")
     totp = data.get("totp")
     role = None
-    if user == "admin" and password == current_app.config.get(
-        "ADMIN_PASSWORD", "admin"
-    ):
-        role = "admin"
-    elif user == "operator" and password == current_app.config.get(
-        "OPERATOR_PASSWORD", "operator"
-    ):
-        role = "operator"
-    else:
+    if user in {"admin", "operator"}:
+        hashed = current_app.config.get(f"{user.upper()}_PASSWORD_HASH")
+        if hashed:
+            try:
+                valid = bcrypt.checkpw(password.encode(), hashed.encode())
+            except Exception:
+                valid = False
+        else:
+            env_plain = current_app.config.get(f"{user.upper()}_PASSWORD", user)
+            valid = password == env_plain
+        if valid:
+            role = user
+    if role is None:
         return {"msg": "bad credentials"}, 401
     secret = current_app.config.get("TOTP_SECRET")
     if secret:

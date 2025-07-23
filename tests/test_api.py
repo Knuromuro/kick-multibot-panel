@@ -1,4 +1,5 @@
 import pytest
+import bcrypt
 
 from backend import create_app
 from backend.models import db
@@ -6,11 +7,13 @@ from backend.models import db
 
 @pytest.fixture
 def client(tmp_path):
+    password_hash = bcrypt.hashpw(b"admin", bcrypt.gensalt()).decode()
     app = create_app(
         {
             "TESTING": True,
             "SQLALCHEMY_DATABASE_URI": f"sqlite:///{tmp_path}/test.db",
             "CACHE_TYPE": "SimpleCache",
+            "ADMIN_PASSWORD_HASH": password_hash,
         }
     )
     with app.test_client() as client:

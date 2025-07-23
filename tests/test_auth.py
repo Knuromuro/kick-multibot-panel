@@ -1,10 +1,12 @@
 import pytest
 from backend import create_app
 from backend.models import db
+import bcrypt
 
 
 @pytest.fixture
 def auth_client(tmp_path):
+    password_hash = bcrypt.hashpw(b"admin", bcrypt.gensalt()).decode()
     app = create_app(
         {
             "SQLALCHEMY_DATABASE_URI": f"sqlite:///{tmp_path}/test.db",
@@ -12,6 +14,7 @@ def auth_client(tmp_path):
             "WTF_CSRF_ENABLED": False,
             "LOGIN_DISABLED": False,
             "TESTING": True,
+            "ADMIN_PASSWORD_HASH": password_hash,
         }
     )
     with app.test_client() as client:

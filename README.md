@@ -110,7 +110,9 @@ important variables are:
 - `REDIS_URL` – Redis connection string for task queue and caching
 - `MAX_DRIVERS` – size of the Selenium WebDriver pool (default 5)
 - `JWT_SECRET_KEY` – secret used to sign access tokens
- - `TOTP_SECRET` – base32 secret for two factor login. When set, both the login page and `/auth/token` require a valid TOTP code.
+- `TOTP_SECRET` – base32 secret for two factor login. When set, both the login page and `/auth/token` require a valid TOTP code.
+- `ADMIN_PASSWORD_HASH` – bcrypt hash for the admin password (overrides `ADMIN_PASSWORD`)
+- `OPERATOR_PASSWORD_HASH` – bcrypt hash for the operator password (overrides `OPERATOR_PASSWORD`)
 - `SENTRY_DSN` – optional Sentry endpoint for error reporting
 - `SLACK_WEBHOOK` – webhook URL for Slack alerts
 - `TELEGRAM_TOKEN` and `TELEGRAM_CHAT_ID` – credentials for Telegram alerts
