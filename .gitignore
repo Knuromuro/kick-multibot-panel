@@ -9,3 +9,5 @@ analytics.log
 venv/
 .env/
 .venv/
+sync_fallback.jsonl
+run.pid
