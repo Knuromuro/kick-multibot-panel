@@ -53,6 +53,11 @@ def create_app(config: Optional[dict] = None) -> Flask:
             "JWT_SECRET_KEY": cfg.JWT_SECRET_KEY,
             "JWT_ACCESS_TOKEN_EXPIRES": timedelta(minutes=15),
             "JWT_REFRESH_TOKEN_EXPIRES": timedelta(days=1),
+            "JWT_TOKEN_LOCATION": ["cookies", "headers"],
+            "JWT_COOKIE_CSRF_PROTECT": True,
+            "JWT_COOKIE_SECURE": not os.getenv("DEBUG", "true").lower() == "true",
+            "JWT_ACCESS_COOKIE_PATH": "/",
+            "JWT_REFRESH_COOKIE_PATH": "/auth/refresh",
             "TOTP_SECRET": cfg.TOTP_SECRET,
             "SESSION_COOKIE_HTTPONLY": True,
             "SESSION_COOKIE_SAMESITE": "Lax",
@@ -78,6 +83,7 @@ def create_app(config: Optional[dict] = None) -> Flask:
 
     scheduler.init_redis()
     app.redis_online = True
+    app.redis_warned = False
     app.config.setdefault("SYNC_FALLBACK_FILE", str(Path("sync_fallback.jsonl")))
 
     if not sched.running:
@@ -92,11 +98,13 @@ def create_app(config: Optional[dict] = None) -> Flask:
                 if not getattr(app, "redis_online", True):
                     logger.info("Redis connection restored")
                     socketio.emit("redis_status", {"online": True})
+                    app.redis_warned = False
                 app.redis_online = True
             except RedisConnError:
-                if getattr(app, "redis_online", True):
+                if getattr(app, "redis_online", True) and not app.redis_warned:
                     logger.warning("Redis unavailable, deferring sync")
                     socketio.emit("redis_status", {"online": False})
+                    app.redis_warned = True
                 app.redis_online = False
                 with app.app_context():
                     events = SyncEvent.query.filter_by(synced=False).all()

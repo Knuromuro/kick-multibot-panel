@@ -31,37 +31,12 @@ async function checkRedis() {
   else redisBanner.classList.remove('hidden');
 }
 
-function getAccess() {
-  return localStorage.getItem('accessToken');
-}
-
-async function refreshToken() {
-  const refresh = localStorage.getItem('refreshToken');
-  if (!refresh) return null;
-  const res = await fetch('/auth/refresh', {
-    method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + refresh }
-  }).catch(() => null);
-  if (!res || !res.ok) return null;
-  const data = await res.json();
-  localStorage.setItem('accessToken', data.access_token);
-  return data.access_token;
-}
-
 async function api(url, opts = {}) {
   opts.headers = Object.assign({}, opts.headers, {
-    'X-CSRFToken': csrfToken,
-    'Authorization': 'Bearer ' + getAccess()
+    'X-CSRFToken': csrfToken
   });
   showSpinner();
   let res = await fetch(url, opts).catch(() => null);
-  if (res && res.status === 401) {
-    const newTok = await refreshToken();
-    if (newTok) {
-      opts.headers['Authorization'] = 'Bearer ' + newTok;
-      res = await fetch(url, opts).catch(() => null);
-    }
-  }
   hideSpinner();
   if (!res) return null;
   return res.json();
@@ -104,7 +79,7 @@ async function loadGroups() {
   list.innerHTML = '';
   groups.forEach(g => {
     const li = document.createElement('li');
-    li.className = 'mb-1';
+    li.className = 'mb-1 bg-white rounded shadow p-2';
     li.innerHTML = `<div class="font-semibold">${g.name} (${g.target})</div>`;
     if (g.bots && g.bots.length) {
       const ul = document.createElement('ul');
@@ -145,11 +120,12 @@ async function loadBots() {
   container.innerHTML = '';
   bots.forEach(b => {
     const div = document.createElement('div');
-    let color = 'bg-red-200';
-    if (b.status === 'online') color = 'bg-green-200';
-    else if (b.status === 'queued') color = 'bg-yellow-200';
-    div.className = `${color} p-2 space-x-1`;
-    div.innerHTML = `ID ${b.id} (${b.username}) - ${b.status}
+    let badge = 'bg-red-500';
+    if (b.status === 'online') badge = 'bg-green-500';
+    else if (b.status === 'queued') badge = 'bg-yellow-500';
+    div.className = 'bg-white rounded shadow p-2 flex items-center space-x-2';
+    div.innerHTML = `<span class="px-2 py-1 text-white text-xs rounded ${badge}">${b.status}</span>
+      <span class="flex-1">ID ${b.id} (${b.username})</span>
       <button onclick="startBot(${b.id})" class="bg-green-500 text-white px-1">Start</button>
       <button onclick="stopBot(${b.id})" class="bg-red-500 text-white px-1">Stop</button>
       <button onclick="openCmd(${b.id})" class="bg-blue-500 text-white px-1">Cmd</button>
@@ -195,7 +171,9 @@ async function fetchLogs(id) {
   async function load() {
     const lines = await api(`/dashboard/api/bots/${id}/logs`);
     if (lines) {
-      document.getElementById('logBox').textContent = lines.join('\n');
+      const box = document.getElementById('logBox');
+      box.textContent = lines.slice(-50).join('\n');
+      box.scrollTop = box.scrollHeight;
     }
   }
   await load();
