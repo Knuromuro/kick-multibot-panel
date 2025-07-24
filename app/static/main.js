@@ -71,6 +71,10 @@ async function api(url, opts = {}) {
 function openModal(id) { document.getElementById(id).showModal(); }
 function closeModal(id) { document.getElementById(id).close(); }
 function closeCmd() { document.getElementById('cmdDialog').close(); }
+function openCmd(id) {
+  document.getElementById('cmd-id').value = id;
+  document.getElementById('cmdDialog').showModal();
+}
 
 async function syncPull() {
   const res = await api('/sync/pull');
@@ -102,6 +106,10 @@ async function loadGroups() {
   const groups = data.items || data;
   const list = document.getElementById('groupList');
   list.innerHTML = '';
+  if (!groups.length) {
+    list.innerHTML = '<li class="text-gray-500 text-sm">No groups created yet</li>';
+    return;
+  }
   groups.forEach(g => {
     const li = document.createElement('li');
     li.className = 'mb-1';
@@ -128,6 +136,12 @@ async function loadAccounts() {
   const accs = data.items || data;
   const table = document.getElementById('accountTable');
   table.innerHTML = '<tr><th>ID</th><th>User</th><th>Group</th></tr>';
+  if (!accs.length) {
+    const row = document.createElement('tr');
+    row.innerHTML = '<td class="border px-2 text-center" colspan="3">No accounts</td>';
+    table.appendChild(row);
+    return;
+  }
   accs.forEach(a => {
     const row = document.createElement('tr');
     row.innerHTML = `<td class="border px-2">${a.id}</td><td class="border px-2">${a.username}</td><td class="border px-2">${a.group_id}</td>`;
@@ -141,20 +155,30 @@ async function loadBots() {
   const data = await api(url);
   if (!data) return;
   const bots = data.items || data;
-  const container = document.getElementById('bots');
-  container.innerHTML = '';
+  const table = document.getElementById('botTable');
+  table.innerHTML = '<tr><th>ID</th><th>User</th><th>Status</th><th>Actions</th></tr>';
+  if (!bots.length) {
+    const row = document.createElement('tr');
+    row.innerHTML = '<td class="border px-2 text-center" colspan="4">No bots created yet</td>';
+    table.appendChild(row);
+    return;
+  }
   bots.forEach(b => {
-    const div = document.createElement('div');
-    let color = 'bg-red-200';
-    if (b.status === 'online') color = 'bg-green-200';
-    else if (b.status === 'queued') color = 'bg-yellow-200';
-    div.className = `${color} p-2 space-x-1`;
-    div.innerHTML = `ID ${b.id} (${b.username}) - ${b.status}
-      <button onclick="startBot(${b.id})" class="bg-green-500 text-white px-1">Start</button>
-      <button onclick="stopBot(${b.id})" class="bg-red-500 text-white px-1">Stop</button>
-      <button onclick="openCmd(${b.id})" class="bg-blue-500 text-white px-1">Cmd</button>
-      <button onclick="fetchLogs(${b.id})" class="text-sm underline">Logs</button>`;
-    container.appendChild(div);
+    const row = document.createElement('tr');
+    const badge = b.status === 'online'
+      ? '<span class="bg-green-500 text-white px-2 py-0.5 rounded">running</span>'
+      : '<span class="bg-red-500 text-white px-2 py-0.5 rounded">stopped</span>';
+    row.innerHTML =
+      `<td class="border px-2">${b.id}</td>` +
+      `<td class="border px-2">${b.username}</td>` +
+      `<td class="border px-2 text-center">${badge}</td>` +
+      `<td class="border px-2 space-x-1">` +
+        `<button onclick="startBot(${b.id})" class="bg-green-600 text-white px-2 py-1 text-xs rounded">Start</button>` +
+        `<button onclick="stopBot(${b.id})" class="bg-red-600 text-white px-2 py-1 text-xs rounded">Stop</button>` +
+        `<button onclick="openCmd(${b.id})" class="bg-blue-500 text-white px-2 py-1 text-xs rounded">Cmd</button>` +
+        `<button onclick="fetchLogs(${b.id})" class="underline text-xs">Logs</button>` +
+      `</td>`;
+    table.appendChild(row);
   });
 }
 
@@ -195,7 +219,9 @@ async function fetchLogs(id) {
   async function load() {
     const lines = await api(`/dashboard/api/bots/${id}/logs`);
     if (lines) {
-      document.getElementById('logBox').textContent = lines.join('\n');
+      const box = document.getElementById('logBox');
+      box.textContent = lines.join('\n');
+      box.scrollTop = box.scrollHeight;
     }
   }
   await load();
@@ -318,15 +344,14 @@ socket.on('redis_status', () => checkRedis());
 socket.on('sync_event', syncPull);
 socket.on('connect', () => { syncPull(); syncPush(); checkRedis(); });
 
-loadGroups();
-loadAccounts();
-loadBots();
-refreshStats();
-syncPull();
-syncPush();
-checkRedis();
-setInterval(checkRedis, 10000);
-
 window.addEventListener('load', () => {
+  loadGroups();
+  loadAccounts();
+  loadBots();
+  refreshStats();
+  syncPull();
+  syncPush();
+  checkRedis();
+  setInterval(checkRedis, 10000);
   if (!navigator.onLine) document.getElementById('offlineBanner').classList.remove('hidden');
 });

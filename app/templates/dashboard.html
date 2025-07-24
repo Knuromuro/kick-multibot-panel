@@ -1,37 +1,42 @@
 {% extends 'base.html' %}
 {% block title %}Dashboard{% endblock %}
 {% block content %}
-<h1 class="text-xl mb-4">KickBot Manager</h1>
-<div class="flex flex-col md:flex-row">
-  <aside class="md:w-1/4 p-2 bg-gray-50" id="sidebar">
-    <div class="flex justify-between items-center mb-2">
-      <span class="font-bold">Groups</span>
-      <button id="addGroupBtn" class="bg-green-600 text-white px-2 py-1 text-sm">Add</button>
+<h1 class="text-xl font-bold mb-4">KickBot Manager</h1>
+<div class="md:grid md:grid-cols-4 gap-4">
+  <section id="sidebar" class="md:col-span-1 space-y-4">
+    <div class="bg-white rounded shadow p-4">
+      <div class="flex justify-between items-center mb-2">
+        <h2 class="font-bold text-lg">Groups</h2>
+        <button id="addGroupBtn" class="bg-green-600 text-white px-2 py-1 text-sm rounded">Add</button>
+      </div>
+      <input id="groupSearch" class="border rounded w-full mb-2 p-1" placeholder="Search groups">
+      <ul id="groupList" class="space-y-1 text-sm"></ul>
     </div>
-    <input id="groupSearch" class="border w-full mb-2" placeholder="Search groups">
-    <ul id="groupList" class="space-y-1"></ul>
-  </aside>
-  <main class="md:flex-1 p-2" id="mainArea">
-    <button onclick="syncPush()" class="bg-gray-500 text-white px-2 py-1 mb-2">Sync Now</button>
-    <div class="flex justify-between items-center mb-2">
-      <span class="font-bold">Accounts</span>
-      <button id="addAccountBtn" class="bg-green-600 text-white px-2 py-1 text-sm">Add</button>
+  </section>
+  <main class="md:col-span-3 space-y-4" id="mainArea">
+    <div class="bg-white rounded shadow p-4">
+      <div class="flex justify-between items-center mb-2">
+        <h2 class="font-bold text-lg">Accounts</h2>
+        <button id="addAccountBtn" class="bg-green-600 text-white px-2 py-1 text-sm rounded">Add</button>
+      </div>
+      <input id="accountSearch" class="border rounded w-full mb-2 p-1" placeholder="Search accounts">
+      <table id="accountTable" class="w-full text-sm border-collapse"></table>
     </div>
-    <input id="accountSearch" class="border w-full mb-2" placeholder="Search accounts">
-    <table id="accountTable" class="w-full border-collapse mb-4"></table>
-    <section class="mb-4">
-      <h2 class="font-bold">Bots</h2>
-      <button onclick="startScheduler()" class="bg-blue-500 text-white px-2 py-1 mb-2">Start Scheduler</button>
-      <input id="botSearch" class="border w-full mb-2" placeholder="Search bots">
-      <div id="bots" class="space-y-2"></div>
-    </section>
-    <section class="mb-4">
+    <div class="bg-white rounded shadow p-4">
+      <div class="flex justify-between items-center mb-2">
+        <h2 class="font-bold text-lg">Bots</h2>
+        <button onclick="startScheduler()" class="bg-blue-500 text-white px-2 py-1 text-sm rounded">Start Scheduler</button>
+      </div>
+      <input id="botSearch" class="border rounded w-full mb-2 p-1" placeholder="Search bots">
+      <table id="botTable" class="w-full text-sm border-collapse"></table>
+    </div>
+    <div class="bg-white rounded shadow p-4">
       <canvas id="chart" height="150"></canvas>
-    </section>
-    <section class="mt-6">
-      <h2 class="font-bold">Logs</h2>
-      <pre id="logBox" class="bg-gray-100 p-2 h-64 overflow-auto">Select a bot to view logs</pre>
-    </section>
+    </div>
+    <div class="bg-white rounded shadow p-4">
+      <h2 class="font-bold text-lg mb-2">Logs</h2>
+      <pre id="logBox" class="bg-gray-100 p-2 h-64 overflow-auto rounded">Select a bot to view logs</pre>
+    </div>
   </main>
 </div>
 
