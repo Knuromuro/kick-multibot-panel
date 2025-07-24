@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import subprocess
 
-from flask import Blueprint, request, current_app, Response
+from flask import Blueprint, request, current_app, Response, jsonify
 from flask_restx import Api, Resource
 from flask_jwt_extended import (
     create_access_token,
@@ -59,7 +59,23 @@ def get_token():
     claims = {"role": role}
     access = create_access_token(identity=user, additional_claims=claims)
     refresh = create_refresh_token(identity=user, additional_claims=claims)
-    return {"access_token": access, "refresh_token": refresh}
+    resp = jsonify({"access_token": access, "refresh_token": refresh})
+    secure = not current_app.config.get("TESTING", False)
+    resp.set_cookie(
+        "access_token",
+        access,
+        httponly=True,
+        samesite="Lax",
+        secure=secure,
+    )
+    resp.set_cookie(
+        "refresh_token",
+        refresh,
+        httponly=True,
+        samesite="Lax",
+        secure=secure,
+    )
+    return resp
 
 
 @auth_bp.route("/auth/refresh", methods=["POST"])
@@ -70,7 +86,16 @@ def refresh_token():
     access = create_access_token(
         identity=identity, additional_claims={"role": claims.get("role")}
     )
-    return {"access_token": access}
+    resp = jsonify({"access_token": access})
+    secure = not current_app.config.get("TESTING", False)
+    resp.set_cookie(
+        "access_token",
+        access,
+        httponly=True,
+        samesite="Lax",
+        secure=secure,
+    )
+    return resp
 
 
 @ns.route("/groups", methods=["GET", "POST"], endpoint="groups")
