@@ -1,0 +1,13 @@
+__pycache__/
+instance/
+*.pyc
+*.db
+logs/
+analytics.log
+
+# Virtualenv
+venv/
+.env/
+.venv/
+sync_fallback.jsonl
+run.pid

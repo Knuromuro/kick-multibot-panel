@@ -1,0 +1,26 @@
+table th, table td {
+  border: 1px solid #ddd;
+  padding: 4px 8px;
+}
+
+table th {
+  background-color: #f3f4f6;
+}
+
+#spinner {
+  z-index: 50;
+}
+
+[data-theme="dark"] {
+  --bg: #1f2937;
+  --fg: #f9fafb;
+}
+
+[data-theme="dark"] body {
+  background-color: var(--bg);
+  color: var(--fg);
+}
+
+#toast {
+  transition: opacity 0.3s ease;
+}
