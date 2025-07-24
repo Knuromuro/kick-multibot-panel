@@ -151,6 +151,39 @@ class GroupResource(Resource):
         return {"id": group.id}, 201
 
 
+@ns.route("/groups/<int:group_id>", methods=["DELETE"], endpoint="group_delete")
+class GroupDeleteResource(Resource):
+    @role_required("operator", "admin")
+    def delete(self, group_id: int):
+        group = Group.query.get(group_id)
+        if not group:
+            return {"error": "Group not found"}, 404
+        for acc in list(group.accounts):
+            proc = scheduler.processes.get(acc.id)
+            if proc and proc.poll() is None:
+                proc.terminate()
+                scheduler.running_gauge.dec()
+                current_app.extensions["socketio"].emit("bot_stopped", {"id": acc.id})
+            scheduler.processes.pop(acc.id, None)
+            scheduler.bots.pop(acc.id, None)
+            db.session.delete(acc)
+        db.session.delete(group)
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            logger.error("database error deleting group", exc_info=True)
+            return {"error": "database error"}, 400
+        log_sync_event(
+            "group",
+            "delete",
+            {"id": group_id},
+            current_app.extensions["socketio"],
+        )
+        cache.delete("groups")
+        return {"message": "Group deleted"}
+
+
 @ns.route("/accounts", methods=["GET", "POST"], endpoint="accounts")
 class AccountResource(Resource):
     @jwt_required(optional=True)
@@ -353,6 +386,36 @@ class BotLogs(Resource):
             return []
         lines = log_path.read_text(errors="ignore").splitlines()[-50:]
         return lines
+
+
+@ns.route("/bots/<int:bot_id>", methods=["DELETE"], endpoint="bot_delete")
+class BotDelete(Resource):
+    @role_required("operator", "admin")
+    def delete(self, bot_id: int):
+        account = Account.query.get(bot_id)
+        if not account:
+            return {"error": "Bot not found"}, 404
+        proc = scheduler.processes.get(bot_id)
+        if proc and proc.poll() is None:
+            proc.terminate()
+            scheduler.running_gauge.dec()
+            current_app.extensions["socketio"].emit("bot_stopped", {"id": bot_id})
+        scheduler.processes.pop(bot_id, None)
+        scheduler.bots.pop(bot_id, None)
+        db.session.delete(account)
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            logger.error("database error deleting bot", exc_info=True)
+            return {"error": "database error"}, 400
+        log_sync_event(
+            "account",
+            "delete",
+            {"id": bot_id},
+            current_app.extensions["socketio"],
+        )
+        return {"message": "Bot deleted"}
 
 
 @ns.route("/stats", methods=["GET"], endpoint="stats")

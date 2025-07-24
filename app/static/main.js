@@ -80,7 +80,7 @@ async function loadGroups() {
   groups.forEach(g => {
     const li = document.createElement('li');
     li.className = 'mb-1 bg-white rounded shadow p-2';
-    li.innerHTML = `<div class="font-semibold">${g.name} (${g.target})</div>`;
+    li.innerHTML = `<div class="flex justify-between items-center"><span class="font-semibold">${g.name} (${g.target})</span><button onclick="deleteGroup(${g.id})" class="text-red-600 text-sm underline ml-2">Delete</button></div>`;
     if (g.bots && g.bots.length) {
       const ul = document.createElement('ul');
       ul.className = 'pl-4 list-disc';
@@ -129,7 +129,8 @@ async function loadBots() {
       <button onclick="startBot(${b.id})" class="bg-green-500 text-white px-1">Start</button>
       <button onclick="stopBot(${b.id})" class="bg-red-500 text-white px-1">Stop</button>
       <button onclick="openCmd(${b.id})" class="bg-blue-500 text-white px-1">Cmd</button>
-      <button onclick="fetchLogs(${b.id})" class="text-sm underline">Logs</button>`;
+      <button onclick="fetchLogs(${b.id})" class="text-sm underline">Logs</button>
+      <button onclick="deleteBot(${b.id})" class="text-red-600 text-sm underline ml-1">Delete</button>`;
     container.appendChild(div);
   });
 }
@@ -166,6 +167,15 @@ async function stopBot(id) {
   loadBots();
 }
 
+async function deleteBot(id) {
+  if (!confirm('Delete this bot?')) return;
+  const res = await api(`/dashboard/api/bots/${id}`, {method: 'DELETE'});
+  if (res && res.message) showToast(res.message); else if (res && res.error) showToast(res.error, false);
+  loadBots();
+  loadAccounts();
+  loadGroups();
+}
+
 async function fetchLogs(id) {
   if (logTimer) clearInterval(logTimer);
   async function load() {
@@ -178,6 +188,15 @@ async function fetchLogs(id) {
   }
   await load();
   logTimer = setInterval(load, 3000);
+}
+
+async function deleteGroup(id) {
+  if (!confirm('Delete this group?')) return;
+  const res = await api(`/dashboard/api/groups/${id}`, {method: 'DELETE'});
+  if (res && res.message) showToast(res.message); else if (res && res.error) showToast(res.error, false);
+  loadGroups();
+  loadAccounts();
+  loadBots();
 }
 
 document.getElementById('addGroupBtn').addEventListener('click', () => openModal('groupModal'));
