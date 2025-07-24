@@ -109,6 +109,13 @@ def create_app(config: Optional[dict] = None) -> Flask:
         sched.add_job(
             enqueue_sync, "interval", minutes=1, id="sync_sender", replace_existing=True
         )
+        sched.add_job(
+            lambda: scheduler.monitor_processes(socketio),
+            "interval",
+            seconds=5,
+            id="process_monitor",
+            replace_existing=True,
+        )
         sched.start()
 
     @app.before_request
