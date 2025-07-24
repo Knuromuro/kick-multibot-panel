@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kickbot
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: kickbot
+  template:
+    metadata:
+      labels:
+        app: kickbot
+    spec:
+      containers:
+      - name: kickbot
+        image: {{ .Values.image }}
+        ports:
+        - containerPort: 5000
+        readinessProbe:
+          httpGet:
+            path: /login
+            port: 5000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /login
+            port: 5000
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        resources: {{- toYaml .Values.resources | nindent 10 }}

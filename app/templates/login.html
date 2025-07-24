@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% block title %}Login{% endblock %}
+{% block content %}
+<h1 class="text-xl mb-4">Login</h1>
+{% with messages = get_flashed_messages(category_filter=['error']) %}
+{% if messages %}
+<div class="text-red-500">{{ messages[0] }}</div>
+{% endif %}
+{% endwith %}
+<form method="POST" action="/login" class="space-y-2">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="text" name="username" placeholder="Username" class="border p-2 w-full" required>
+  <input type="password" name="password" placeholder="Password" class="border p-2 w-full" required>
+  {% if config.TOTP_SECRET %}
+  <input type="text" name="totp" placeholder="TOTP" class="border p-2 w-full" required>
+  {% endif %}
+  <button type="submit" class="bg-blue-500 text-white px-4 py-2">Login</button>
+</form>
+{% endblock %}

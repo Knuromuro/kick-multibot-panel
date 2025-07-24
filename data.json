@@ -1,0 +1,10 @@
+{
+  "accounts": [
+    {"id": 1, "email": "user1@example.com", "password": "pass1", "proxy": null},
+    {"id": 2, "email": "user2@example.com", "password": "pass2", "proxy": "http://proxy:8080"}
+  ],
+  "groups": [
+    {"name": "group1", "accounts": [1]},
+    {"name": "group2", "accounts": [1, 2]}
+  ]
+}
