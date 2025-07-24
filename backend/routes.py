@@ -8,8 +8,10 @@ from flask_restx import Api, Resource
 from flask_jwt_extended import (
     create_access_token,
     create_refresh_token,
-    jwt_required,
     get_jwt,
+    jwt_required,
+    set_access_cookies,
+    set_refresh_cookies,
 )
 from marshmallow import ValidationError
 from prometheus_client import generate_latest
@@ -59,7 +61,11 @@ def get_token():
     claims = {"role": role}
     access = create_access_token(identity=user, additional_claims=claims)
     refresh = create_refresh_token(identity=user, additional_claims=claims)
-    return {"access_token": access, "refresh_token": refresh}
+    resp = {"access_token": access, "refresh_token": refresh}
+    response = current_app.make_response(resp)
+    set_access_cookies(response, access)
+    set_refresh_cookies(response, refresh)
+    return response
 
 
 @auth_bp.route("/auth/refresh", methods=["POST"])
@@ -70,7 +76,10 @@ def refresh_token():
     access = create_access_token(
         identity=identity, additional_claims={"role": claims.get("role")}
     )
-    return {"access_token": access}
+    resp = {"access_token": access}
+    response = current_app.make_response(resp)
+    set_access_cookies(response, access)
+    return response
 
 
 @ns.route("/groups", methods=["GET", "POST"], endpoint="groups")
@@ -78,8 +87,14 @@ class GroupResource(Resource):
     @jwt_required(optional=True)
     def get(self):
         search = (request.args.get("search") or "").strip()
-        page = int(request.args.get("page", 1))
-        per_page = int(request.args.get("per_page", 50))
+        try:
+            page = int(request.args.get("page") or 1)
+        except ValueError:
+            page = 1
+        try:
+            per_page = int(request.args.get("per_page") or 50)
+        except ValueError:
+            per_page = 50
         if not search and page == 1 and per_page == 50:
             cached = cache.get("groups")
             if cached is not None:
@@ -136,13 +151,52 @@ class GroupResource(Resource):
         return {"id": group.id}, 201
 
 
+@ns.route("/groups/<int:group_id>", methods=["DELETE"], endpoint="group_delete")
+class GroupDeleteResource(Resource):
+    @role_required("operator", "admin")
+    def delete(self, group_id: int):
+        group = Group.query.get(group_id)
+        if not group:
+            return {"error": "Group not found"}, 404
+        for acc in list(group.accounts):
+            proc = scheduler.processes.get(acc.id)
+            if proc and proc.poll() is None:
+                proc.terminate()
+                scheduler.running_gauge.dec()
+                current_app.extensions["socketio"].emit("bot_stopped", {"id": acc.id})
+            scheduler.processes.pop(acc.id, None)
+            scheduler.bots.pop(acc.id, None)
+            db.session.delete(acc)
+        db.session.delete(group)
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            logger.error("database error deleting group", exc_info=True)
+            return {"error": "database error"}, 400
+        log_sync_event(
+            "group",
+            "delete",
+            {"id": group_id},
+            current_app.extensions["socketio"],
+        )
+        cache.delete("groups")
+        return {"message": "Group deleted"}
+
+
 @ns.route("/accounts", methods=["GET", "POST"], endpoint="accounts")
 class AccountResource(Resource):
     @jwt_required(optional=True)
     def get(self):
         search = (request.args.get("search") or "").strip()
-        page = int(request.args.get("page", 1))
-        per_page = int(request.args.get("per_page", 50))
+        try:
+            page = int(request.args.get("page") or 1)
+        except ValueError:
+            page = 1
+        try:
+            per_page = int(request.args.get("per_page") or 50)
+        except ValueError:
+            per_page = 50
         query = Account.query
         if search:
             query = query.filter(Account.username.ilike(f"%{search}%"))
@@ -161,6 +215,9 @@ class AccountResource(Resource):
             logger.warning("invalid account payload: %s", err.messages)
             return {"errors": err.messages}, 400
         group_id = data.get("group_id")
+        if not isinstance(group_id, int):
+            logger.warning("missing or invalid group_id for account %s", data.get("username"))
+            return {"error": "Invalid group_id"}, 400
         group = Group.query.get(group_id)
         if not group:
             logger.warning(
@@ -197,8 +254,14 @@ class BotListResource(Resource):
     @jwt_required(optional=True)
     def get(self):
         search = (request.args.get("search") or "").strip()
-        page = int(request.args.get("page", 1))
-        per_page = int(request.args.get("per_page", 50))
+        try:
+            page = int(request.args.get("page") or 1)
+        except ValueError:
+            page = 1
+        try:
+            per_page = int(request.args.get("per_page") or 50)
+        except ValueError:
+            per_page = 50
         query = Account.query
         if search:
             query = query.filter(Account.username.ilike(f"%{search}%"))
@@ -225,7 +288,8 @@ class BotListResource(Resource):
             data = AccountSchema().load(request.get_json(silent=True) or {})
         except ValidationError as err:
             return {"errors": err.messages}, 400
-        if not Group.query.get(data["group_id"]):
+        gid = data.get("group_id")
+        if not isinstance(gid, int) or not Group.query.get(gid):
             return {"error": "Invalid group_id"}, 400
         if Account.query.filter_by(username=data["username"]).first():
             return {"error": "account already exists"}, 400
@@ -322,6 +386,36 @@ class BotLogs(Resource):
             return []
         lines = log_path.read_text(errors="ignore").splitlines()[-50:]
         return lines
+
+
+@ns.route("/bots/<int:bot_id>", methods=["DELETE"], endpoint="bot_delete")
+class BotDelete(Resource):
+    @role_required("operator", "admin")
+    def delete(self, bot_id: int):
+        account = Account.query.get(bot_id)
+        if not account:
+            return {"error": "Bot not found"}, 404
+        proc = scheduler.processes.get(bot_id)
+        if proc and proc.poll() is None:
+            proc.terminate()
+            scheduler.running_gauge.dec()
+            current_app.extensions["socketio"].emit("bot_stopped", {"id": bot_id})
+        scheduler.processes.pop(bot_id, None)
+        scheduler.bots.pop(bot_id, None)
+        db.session.delete(account)
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            logger.error("database error deleting bot", exc_info=True)
+            return {"error": "database error"}, 400
+        log_sync_event(
+            "account",
+            "delete",
+            {"id": bot_id},
+            current_app.extensions["socketio"],
+        )
+        return {"message": "Bot deleted"}
 
 
 @ns.route("/stats", methods=["GET"], endpoint="stats")

@@ -24,7 +24,19 @@ cd kick-multibot-panel
 pip install -r requirements.txt
 ```
 
-Create a `.env` file based on `.env.example` and set values like `SECRET_KEY`, `DATABASE_URL`, `REDIS_URL` and Kick credentials.
+Create a `.env` file based on `.env.example` and set:
+
+- `SECRET_KEY` – Flask session secret
+- `JWT_SECRET_KEY` – signing key for JWTs
+- `DATABASE_URL` – SQLAlchemy database URI
+- `REDIS_URL` – Redis connection string (optional)
+- `ADMIN_PASSWORD_HASH` / `OPERATOR_PASSWORD_HASH` – bcrypt password hashes
+
+Generate hashes with:
+
+```bash
+python -c "import bcrypt,sys;print(bcrypt.hashpw(sys.argv[1].encode(), bcrypt.gensalt()).decode())" yourpass
+```
 
 ## Running the Application
 
@@ -36,7 +48,13 @@ python run.py
 
 Visit `http://127.0.0.1:5000/dashboard` to log in and use the panel.
 
-For production use a WSGI server such as Gunicorn behind Nginx or run the provided Docker container.
+For production run with Gunicorn for example:
+
+```bash
+gunicorn -w 4 run:app
+```
+
+Redis is optional. When not available the scheduler stores events locally until the connection comes back.
 
 ## Using the Dashboard
 
@@ -56,6 +74,8 @@ For production use a WSGI server such as Gunicorn behind Nginx or run the provid
 - `POST /dashboard/api/bots/<id>/start` – start a bot
 - `POST /dashboard/api/bots/<id>/stop` – stop a bot
 - `GET /dashboard/api/bots/<id>/logs` – recent log lines
+- `DELETE /dashboard/api/bots/<id>` – delete a bot
+- `DELETE /dashboard/api/groups/<id>` – delete a group
 
 ## Redis Fallback
 

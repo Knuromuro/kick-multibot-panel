@@ -32,7 +32,11 @@ sched = BackgroundScheduler(
 )
 
 aio_loop = asyncio.new_event_loop()
-_thread = Thread(target=lambda: aio_loop.run_forever(), daemon=True)
+
+def _run_loop() -> None:
+    aio_loop.run_forever()
+
+_thread = Thread(target=_run_loop, daemon=True)
 _thread.start()
 
 redis_conn: Optional[redis.Redis] = None
@@ -124,6 +128,10 @@ def run_bot_task(bot_id: int, socketio: SocketIO) -> None:
         socketio.emit("bot_error", {"id": bot_id})
 
 
+def _queue_send_job(aid: int, socketio: SocketIO) -> None:
+    asyncio.run_coroutine_threadsafe(send_job(aid, socketio), aio_loop)
+
+
 def schedule_all(socketio: SocketIO) -> None:
     sched.remove_all_jobs()
     for acc in Account.query.all():
@@ -132,13 +140,12 @@ def schedule_all(socketio: SocketIO) -> None:
             continue
         try:
             sched.add_job(
-                lambda aid=acc.id: asyncio.run_coroutine_threadsafe(
-                    send_job(aid, socketio), aio_loop
-                ),
+                _queue_send_job,
                 "interval",
                 seconds=group.interval,
                 id=str(acc.id),
                 replace_existing=True,
+                args=[acc.id, socketio],
             )
         except Exception as exc:  # noqa: broad-except
             logger.error("could not schedule job %s: %s", acc.id, exc)
