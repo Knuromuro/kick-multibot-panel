@@ -74,6 +74,8 @@ Redis is optional. When not available the scheduler stores events locally until 
 - `POST /dashboard/api/bots/<id>/start` – start a bot
 - `POST /dashboard/api/bots/<id>/stop` – stop a bot
 - `GET /dashboard/api/bots/<id>/logs` – recent log lines
+- `DELETE /dashboard/api/bots/<id>` – delete a bot
+- `DELETE /dashboard/api/groups/<id>` – delete a group
 
 ## Redis Fallback
 
