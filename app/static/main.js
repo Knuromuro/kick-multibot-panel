@@ -106,6 +106,10 @@ async function loadGroups() {
   const groups = data.items || data;
   const list = document.getElementById('groupList');
   list.innerHTML = '';
+  if (!groups.length) {
+    list.innerHTML = '<li class="text-gray-500 text-sm">No groups created yet</li>';
+    return;
+  }
   groups.forEach(g => {
     const li = document.createElement('li');
     li.className = 'mb-1';
@@ -132,6 +136,12 @@ async function loadAccounts() {
   const accs = data.items || data;
   const table = document.getElementById('accountTable');
   table.innerHTML = '<tr><th>ID</th><th>User</th><th>Group</th></tr>';
+  if (!accs.length) {
+    const row = document.createElement('tr');
+    row.innerHTML = '<td class="border px-2 text-center" colspan="3">No accounts</td>';
+    table.appendChild(row);
+    return;
+  }
   accs.forEach(a => {
     const row = document.createElement('tr');
     row.innerHTML = `<td class="border px-2">${a.id}</td><td class="border px-2">${a.username}</td><td class="border px-2">${a.group_id}</td>`;
@@ -147,6 +157,12 @@ async function loadBots() {
   const bots = data.items || data;
   const table = document.getElementById('botTable');
   table.innerHTML = '<tr><th>ID</th><th>User</th><th>Status</th><th>Actions</th></tr>';
+  if (!bots.length) {
+    const row = document.createElement('tr');
+    row.innerHTML = '<td class="border px-2 text-center" colspan="4">No bots created yet</td>';
+    table.appendChild(row);
+    return;
+  }
   bots.forEach(b => {
     const row = document.createElement('tr');
     const badge = b.status === 'online'
@@ -328,7 +344,7 @@ socket.on('redis_status', () => checkRedis());
 socket.on('sync_event', syncPull);
 socket.on('connect', () => { syncPull(); syncPush(); checkRedis(); });
 
-document.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('load', () => {
   loadGroups();
   loadAccounts();
   loadBots();
@@ -337,8 +353,5 @@ document.addEventListener('DOMContentLoaded', () => {
   syncPush();
   checkRedis();
   setInterval(checkRedis, 10000);
-});
-
-window.addEventListener('load', () => {
   if (!navigator.onLine) document.getElementById('offlineBanner').classList.remove('hidden');
 });

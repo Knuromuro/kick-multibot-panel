@@ -78,8 +78,8 @@ class GroupResource(Resource):
     @jwt_required(optional=True)
     def get(self):
         search = (request.args.get("search") or "").strip()
-        page = int(request.args.get("page", 1))
-        per_page = int(request.args.get("per_page", 50))
+        page = int(request.args.get("page") or 1)
+        per_page = int(request.args.get("per_page") or 50)
         if not search and page == 1 and per_page == 50:
             cached = cache.get("groups")
             if cached is not None:
@@ -141,8 +141,8 @@ class AccountResource(Resource):
     @jwt_required(optional=True)
     def get(self):
         search = (request.args.get("search") or "").strip()
-        page = int(request.args.get("page", 1))
-        per_page = int(request.args.get("per_page", 50))
+        page = int(request.args.get("page") or 1)
+        per_page = int(request.args.get("per_page") or 50)
         query = Account.query
         if search:
             query = query.filter(Account.username.ilike(f"%{search}%"))
@@ -197,8 +197,8 @@ class BotListResource(Resource):
     @jwt_required(optional=True)
     def get(self):
         search = (request.args.get("search") or "").strip()
-        page = int(request.args.get("page", 1))
-        per_page = int(request.args.get("per_page", 50))
+        page = int(request.args.get("page") or 1)
+        per_page = int(request.args.get("per_page") or 50)
         query = Account.query
         if search:
             query = query.filter(Account.username.ilike(f"%{search}%"))
