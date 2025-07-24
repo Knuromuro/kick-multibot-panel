@@ -60,6 +60,7 @@ For production use a WSGI server such as Gunicorn behind Nginx or run the provid
 ## Redis Fallback
 
 Redis is optional. When Redis cannot be reached the server logs a warning only once and runs scheduled tasks inline. Pending sync events are written to `sync_fallback.jsonl` and replayed once Redis is back online.
+- The scheduler monitors bot subprocesses and restarts them automatically if they crash.
 
 ## Security & Best Practices
 

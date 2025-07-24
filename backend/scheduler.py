@@ -51,6 +51,51 @@ bots: Dict[int, BotInstance] = {}
 processes: Dict[int, subprocess.Popen] = {}
 
 
+def start_process(bot_id: int, socketio: SocketIO) -> Optional[subprocess.Popen]:
+    """Start a bot subprocess and store it."""
+    app = APP or current_app
+    with app.app_context():
+        account = Account.query.get(bot_id)
+        if not account:
+            return None
+        group = Group.query.get(account.group_id)
+        if not group:
+            return None
+    msg = "Hello from KickBot"
+    msg_path = Path(account.messages_file or "")
+    if msg_path.is_file():
+        msg = msg_path.read_text().splitlines()[0]
+    cmd = [
+        "python",
+        str(Path(__file__).resolve().parent.parent / "scripts" / "run_bot.py"),
+        "--channel",
+        group.target,
+        "--message",
+        msg,
+        "--interval",
+        str(group.interval),
+        "--token",
+        account.password,
+    ]
+    proc = subprocess.Popen(cmd)
+    processes[bot_id] = proc
+    running_gauge.inc()
+    socketio.emit("bot_started", {"id": bot_id})
+    return proc
+
+
+def monitor_processes(socketio: SocketIO) -> None:
+    """Restart bots if their subprocesses have exited."""
+    for bot_id, proc in list(processes.items()):
+        if proc.poll() is not None:
+            running_gauge.dec()
+            errors_counter.inc()
+            logger.warning("bot %s crashed", bot_id)
+            socketio.emit("bot_error", {"id": bot_id})
+            del processes[bot_id]
+            start_process(bot_id, socketio)
+
+
 def init_redis() -> None:
     global redis_conn, queue, redis_online
     redis_conn = redis.from_url(cfg.REDIS_URL or "redis://localhost:6379/0")
