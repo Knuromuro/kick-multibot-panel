@@ -33,7 +33,8 @@ def login_required(fn):
 
 @bp.route("/")
 def index():
-    return redirect(url_for("panel.login_get"))
+    """Redirect to dashboard."""
+    return redirect(url_for("panel.dashboard"))
 
 
 @bp.get("/login")
