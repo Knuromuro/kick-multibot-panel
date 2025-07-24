@@ -127,11 +127,13 @@ async function loadAccounts() {
   if (!data) return;
   const accs = data.items || data;
   const table = document.getElementById('accountTable');
-  table.innerHTML = '<tr><th>ID</th><th>User</th><th>Group</th></tr>';
+  table.innerHTML = '<thead class="bg-gray-100 font-bold"><tr><th class="border px-2">ID</th><th class="border px-2">User</th><th class="border px-2">Group</th></tr></thead><tbody></tbody>';
+  const tbody = table.querySelector('tbody');
   accs.forEach(a => {
     const row = document.createElement('tr');
+    row.className = 'odd:bg-gray-50';
     row.innerHTML = `<td class="border px-2">${a.id}</td><td class="border px-2">${a.username}</td><td class="border px-2">${a.group_id}</td>`;
-    table.appendChild(row);
+    tbody.appendChild(row);
   });
 }
 
@@ -145,15 +147,17 @@ async function loadBots() {
   container.innerHTML = '';
   bots.forEach(b => {
     const div = document.createElement('div');
-    let color = 'bg-red-200';
-    if (b.status === 'online') color = 'bg-green-200';
-    else if (b.status === 'queued') color = 'bg-yellow-200';
-    div.className = `${color} p-2 space-x-1`;
-    div.innerHTML = `ID ${b.id} (${b.username}) - ${b.status}
-      <button onclick="startBot(${b.id})" class="bg-green-500 text-white px-1">Start</button>
-      <button onclick="stopBot(${b.id})" class="bg-red-500 text-white px-1">Stop</button>
-      <button onclick="openCmd(${b.id})" class="bg-blue-500 text-white px-1">Cmd</button>
-      <button onclick="fetchLogs(${b.id})" class="text-sm underline">Logs</button>`;
+    div.className = 'bg-gray-50 rounded shadow p-2 flex justify-between items-center';
+    let color = 'bg-red-500';
+    if (b.status === 'online') color = 'bg-green-500';
+    const badge = `<span class="text-white ${color} text-xs px-2 py-1 rounded">${b.status}</span>`;
+    div.innerHTML = `<span>ID ${b.id} (${b.username}) ${badge}</span>
+      <span class="space-x-1">
+        <button onclick="startBot(${b.id})" class="bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded text-xs">Start</button>
+        <button onclick="stopBot(${b.id})" class="bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-xs">Stop</button>
+        <button onclick="openCmd(${b.id})" class="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-xs">Cmd</button>
+        <button onclick="fetchLogs(${b.id})" class="underline text-xs">Logs</button>
+      </span>`;
     container.appendChild(div);
   });
 }
@@ -195,7 +199,9 @@ async function fetchLogs(id) {
   async function load() {
     const lines = await api(`/dashboard/api/bots/${id}/logs`);
     if (lines) {
-      document.getElementById('logBox').textContent = lines.join('\n');
+      const box = document.getElementById('logBox');
+      box.textContent = lines.join('\n');
+      box.scrollTop = box.scrollHeight;
     }
   }
   await load();

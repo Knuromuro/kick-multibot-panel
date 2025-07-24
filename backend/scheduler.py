@@ -12,11 +12,14 @@ from rq import Queue
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask import current_app, Flask
+from flask_socketio import SocketIO
+
+SOCKETIO: Optional[SocketIO] = None
+
 from shared.config import load_config
 from shared.logger import logger, notify_webhook
 from bots.instance import BotInstance
 from .models import db, Group, Account, Log, SyncEvent
-from flask_socketio import SocketIO
 from prometheus_client import Counter, Gauge, CollectorRegistry
 
 Timer = _Timer
@@ -64,7 +67,16 @@ def init_redis() -> None:
         logger.warning("Redis unavailable, tasks will run inline")
 
 
-def log_sync_event(entity: str, action: str, payload: dict, socketio: SocketIO) -> None:
+def set_socketio(sock: SocketIO) -> None:
+    """Store socketio instance for tasks."""
+    global SOCKETIO
+    SOCKETIO = sock
+
+
+def log_sync_event(
+    entity: str, action: str, payload: dict, socketio: Optional[SocketIO] = None
+) -> None:
+    sio = socketio or SOCKETIO or current_app.extensions.get("socketio")
     evt = SyncEvent(
         event_id=str(uuid4()),
         entity=entity,
@@ -73,19 +85,20 @@ def log_sync_event(entity: str, action: str, payload: dict, socketio: SocketIO) 
     )
     db.session.add(evt)
     db.session.commit()
-    socketio.emit(
-        "sync_event",
-        {
-            "event_id": evt.event_id,
-            "entity": evt.entity,
-            "action": evt.action,
-            "payload": evt.payload,
-            "timestamp": evt.timestamp.isoformat(),
-        },
-    )
+    if sio:
+        sio.emit(
+            "sync_event",
+            {
+                "event_id": evt.event_id,
+                "entity": evt.entity,
+                "action": evt.action,
+                "payload": evt.payload,
+                "timestamp": evt.timestamp.isoformat(),
+            },
+        )
 
 
-def run_bot_task(bot_id: int, socketio: SocketIO) -> None:
+def run_bot_task(bot_id: int, socketio: Optional[SocketIO] = None) -> None:
     logger.info("starting bot task %s", bot_id)
     app = APP or current_app
     with app.app_context():
@@ -112,19 +125,23 @@ def run_bot_task(bot_id: int, socketio: SocketIO) -> None:
         account.password,
     ]
     runs_counter.inc()
+    sio = socketio or SOCKETIO or current_app.extensions.get("socketio")
     try:
         subprocess.run(cmd, check=True)
-        socketio.emit("bot_stopped", {"id": bot_id})
+        if sio:
+            sio.emit("bot_stopped", {"id": bot_id})
     except Exception as exc:  # noqa: broad-except
         errors_counter.inc()
         logger.error("bot run failed: %s", exc)
         webhook = cfg.SLACK_WEBHOOK
         if webhook:
             notify_webhook(webhook, f"Bot {bot_id} failed: {exc}")
-        socketio.emit("bot_error", {"id": bot_id})
+        if sio:
+            sio.emit("bot_error", {"id": bot_id})
 
 
-def schedule_all(socketio: SocketIO) -> None:
+def schedule_all(socketio: Optional[SocketIO] = None) -> None:
+    sio = socketio or SOCKETIO or current_app.extensions.get("socketio")
     sched.remove_all_jobs()
     for acc in Account.query.all():
         group = Group.query.get(acc.group_id)
@@ -133,7 +150,7 @@ def schedule_all(socketio: SocketIO) -> None:
         try:
             sched.add_job(
                 lambda aid=acc.id: asyncio.run_coroutine_threadsafe(
-                    send_job(aid, socketio), aio_loop
+                    send_job(aid, sio), aio_loop
                 ),
                 "interval",
                 seconds=group.interval,
@@ -144,7 +161,7 @@ def schedule_all(socketio: SocketIO) -> None:
             logger.error("could not schedule job %s: %s", acc.id, exc)
 
 
-async def send_job(account_id: int, socketio: SocketIO) -> None:
+async def send_job(account_id: int, socketio: Optional[SocketIO] = None) -> None:
     app = APP or current_app
     with app.app_context():
         account = Account.query.get(account_id)
@@ -164,35 +181,42 @@ async def send_job(account_id: int, socketio: SocketIO) -> None:
             line = fh.readline().strip()
             if line:
                 message = line
-    socketio.emit("bot_started", {"id": account_id})
+    sio = socketio or SOCKETIO or current_app.extensions.get("socketio")
+    if sio:
+        sio.emit("bot_started", {"id": account_id})
     try:
         await bot.send_message(message)
-        socketio.emit("bot_stopped", {"id": account_id})
+        if sio:
+            sio.emit("bot_stopped", {"id": account_id})
     except Exception as exc:  # noqa: broad-except
         errors_counter.inc()
         logger.error("send job failed: %s", exc)
-        socketio.emit("bot_error", {"id": account_id})
+        if sio:
+            sio.emit("bot_error", {"id": account_id})
     with app.app_context():
         log = Log(account_id=account_id, message=message)
         db.session.add(log)
         db.session.commit()
-    socketio.emit("status", {"message": f"sent message for {account_id}"})
+    if sio:
+        sio.emit("status", {"message": f"sent message for {account_id}"})
 
 
-def process_unsent_events(socketio: SocketIO) -> None:
+def process_unsent_events(socketio: Optional[SocketIO] = None) -> None:
     app = APP or current_app
+    sio = socketio or SOCKETIO or current_app.extensions.get("socketio")
     with app.app_context():
         events = SyncEvent.query.filter_by(synced=False).all()
         for evt in events:
-            socketio.emit(
-                "sync_event",
-                {
-                    "event_id": evt.event_id,
-                    "entity": evt.entity,
-                    "action": evt.action,
-                    "payload": evt.payload,
-                    "timestamp": evt.timestamp.isoformat(),
-                },
-            )
+            if sio:
+                sio.emit(
+                    "sync_event",
+                    {
+                        "event_id": evt.event_id,
+                        "entity": evt.entity,
+                        "action": evt.action,
+                        "payload": evt.payload,
+                        "timestamp": evt.timestamp.isoformat(),
+                    },
+                )
             evt.synced = True
         db.session.commit()
