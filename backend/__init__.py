@@ -75,6 +75,8 @@ def create_app(config: Optional[dict] = None) -> Flask:
     jwt.init_app(app)
     db.init_app(app)
     socketio.init_app(app)
+    # expose the application instance for out-of-context RQ workers
+    scheduler.APP = app
 
     scheduler.init_redis()
     app.redis_online = True
