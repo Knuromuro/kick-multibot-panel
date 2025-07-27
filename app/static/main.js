@@ -64,7 +64,9 @@ async function api(url, opts = {}) {
   }
   hideSpinner();
   if (!res) return null;
-  return res.json();
+  const data = await res.json();
+  if (data && data.error) showToast(data.error, false);
+  return data;
 }
 
 
@@ -244,9 +246,8 @@ document.getElementById('groupForm').addEventListener('submit', async e => {
     q.push({entity: 'group', action: 'create', payload: data, timestamp: new Date().toISOString()});
     saveQueue(q);
     showToast('Queued offline', true);
-  } else if (res.error) {
-    showToast(res.error, false);
   } else {
+    document.getElementById('groupSearch').value = '';
     loadGroups();
     closeModal('groupModal');
     syncPush();
@@ -273,9 +274,8 @@ document.getElementById('accountForm').addEventListener('submit', async e => {
     q.push({entity: 'account', action: 'create', payload: data, timestamp: new Date().toISOString()});
     saveQueue(q);
     showToast('Queued offline', true);
-  } else if (res.error) {
-    showToast(res.error, false);
   } else {
+    document.getElementById('accountSearch').value = '';
     loadAccounts();
     loadBots();
     closeModal('accountModal');
@@ -318,9 +318,7 @@ socket.on('redis_status', () => checkRedis());
 socket.on('sync_event', syncPull);
 socket.on('connect', () => { syncPull(); syncPush(); checkRedis(); });
 
-loadGroups();
 loadAccounts();
-loadBots();
 refreshStats();
 syncPull();
 syncPush();
@@ -329,4 +327,6 @@ setInterval(checkRedis, 10000);
 
 window.addEventListener('load', () => {
   if (!navigator.onLine) document.getElementById('offlineBanner').classList.remove('hidden');
+  loadGroups();
+  loadBots();
 });

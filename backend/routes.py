@@ -77,7 +77,7 @@ def refresh_token():
 class GroupResource(Resource):
     @jwt_required(optional=True)
     def get(self):
-        search = (request.args.get("search") or "").strip()
+        search = request.args.get("search", "").strip()
         page = int(request.args.get("page", 1))
         per_page = int(request.args.get("per_page", 50))
         if not search and page == 1 and per_page == 50:
@@ -101,7 +101,7 @@ class GroupResource(Resource):
         result = {"items": groups, "total": pagination.total}
         if not search and page == 1 and per_page == 50:
             cache.set("groups", result, timeout=60)
-        return result
+        return result, 200
 
     @role_required("operator", "admin")
     def post(self):
@@ -110,7 +110,7 @@ class GroupResource(Resource):
         except ValidationError as err:
             logger.warning("invalid group payload: %s", err.messages)
             return {"errors": err.messages}, 400
-        if Group.query.filter_by(name=data["name"]).first():
+        if Group.query.filter(Group.name.ilike(data["name"])).first():
             logger.warning("duplicate group name %s", data["name"])
             return {"error": "Group name already exists."}, 400
         group = Group(**data)
@@ -140,7 +140,7 @@ class GroupResource(Resource):
 class AccountResource(Resource):
     @jwt_required(optional=True)
     def get(self):
-        search = (request.args.get("search") or "").strip()
+        search = request.args.get("search", "").strip()
         page = int(request.args.get("page", 1))
         per_page = int(request.args.get("per_page", 50))
         query = Account.query
@@ -151,7 +151,7 @@ class AccountResource(Resource):
             {"id": a.id, "username": a.username, "group_id": a.group_id}
             for a in pagination.items
         ]
-        return {"items": accounts, "total": pagination.total}
+        return {"items": accounts, "total": pagination.total}, 200
 
     @role_required("operator", "admin")
     def post(self):
@@ -167,7 +167,7 @@ class AccountResource(Resource):
                 "invalid group_id %s for account %s", group_id, data.get("username")
             )
             return {"error": "Invalid group_id"}, 400
-        if Account.query.filter_by(username=data["username"]).first():
+        if Account.query.filter(Account.username.ilike(data["username"])).first():
             logger.warning("duplicate account username %s", data["username"])
             return {"error": "account already exists"}, 400
         account = Account(**data)
@@ -196,7 +196,7 @@ class AccountResource(Resource):
 class BotListResource(Resource):
     @jwt_required(optional=True)
     def get(self):
-        search = (request.args.get("search") or "").strip()
+        search = request.args.get("search", "").strip()
         page = int(request.args.get("page", 1))
         per_page = int(request.args.get("per_page", 50))
         query = Account.query
@@ -216,7 +216,7 @@ class BotListResource(Resource):
                     "status": status,
                 }
             )
-        return {"items": bots, "total": pagination.total}
+        return {"items": bots, "total": pagination.total}, 200
 
     @role_required("operator", "admin")
     def post(self):
@@ -227,7 +227,7 @@ class BotListResource(Resource):
             return {"errors": err.messages}, 400
         if not Group.query.get(data["group_id"]):
             return {"error": "Invalid group_id"}, 400
-        if Account.query.filter_by(username=data["username"]).first():
+        if Account.query.filter(Account.username.ilike(data["username"])).first():
             return {"error": "account already exists"}, 400
         account = Account(**data)
         db.session.add(account)
